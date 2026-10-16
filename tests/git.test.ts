@@ -1,5 +1,6 @@
 import { execa } from 'execa';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { Git } from '../src/git.js';
 import { makeTempRepo } from './helpers/tempRepo.js';
@@ -52,6 +53,20 @@ describe('Git', () => {
     expect(await fs.readFile(path.join(root, 'ignored.txt'), 'utf8')).toBe('keep\n');
   });
 
+  test('rollback keeps an untracked .mrs-norris/ directory', async () => {
+    const { root, git } = await setup();
+    await fs.mkdir(path.join(root, '.mrs-norris'));
+    await fs.writeFile(path.join(root, '.mrs-norris/config.yaml'), 'model: x\n');
+    await git.rollback();
+    expect(await fs.readFile(path.join(root, '.mrs-norris/config.yaml'), 'utf8')).toBe('model: x\n');
+  });
+
+  test('changedFiles reports both paths of a staged rename as separate entries', async () => {
+    const { root, git } = await setup({ 'old.txt': 'content\n' });
+    await execa('git', ['mv', 'old.txt', 'new.txt'], { cwd: root });
+    expect((await git.changedFiles()).sort()).toEqual(['new.txt', 'old.txt']);
+  });
+
   test('commitAll commits everything and returns the new head sha', async () => {
     const { root, git } = await setup();
     await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
@@ -69,6 +84,16 @@ describe('Git', () => {
   ])('grepWord(%s) matches whole words only', async (term, content, expected) => {
     const { git } = await setup({ 'f.ts': content });
     expect(await git.grepWord(term)).toEqual(expected);
+  });
+
+  test('grepWord skips binary files', async () => {
+    const { git } = await setup({ 'bin.dat': 'needle\0\x01\x02', 'f.ts': 'ok\n' });
+    expect(await git.grepWord('needle')).toEqual([]);
+  });
+
+  test('grepWord throws when git fails', async () => {
+    const git = new Git(await fs.mkdtemp(path.join(os.tmpdir(), 'not-a-repo-')));
+    await expect(git.grepWord('x')).rejects.toThrow('git grep failed');
   });
 
   test('currentBranch is null on a detached HEAD', async () => {

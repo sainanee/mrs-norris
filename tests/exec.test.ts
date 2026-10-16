@@ -12,9 +12,10 @@ describe('runCommand', () => {
     expect(result.stdout).toBe('hi');
   });
 
-  test('reports a timeout', async () => {
-    const result = await runCommand('sleep 5', { cwd: process.cwd(), timeoutMs: 100 });
+  test('a timeout kills the whole command, including child processes', async () => {
+    const result = await runCommand('sleep 5; echo x', { cwd: process.cwd(), timeoutMs: 200 });
     expect(result.timedOut).toBe(true);
+    expect(result.durationMs).toBeLessThan(2000);
     expect(result.exitCode).not.toBe(0);
   });
 });

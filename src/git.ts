@@ -38,7 +38,7 @@ export class Git {
   }
 
   async changedFiles(): Promise<string[]> {
-    const out = await this.run(['status', '--porcelain', '-z', '--untracked-files=all']);
+    const out = await this.run(['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all']);
     return out.split('\0').filter(Boolean).map((entry) => entry.slice(3));
   }
 
@@ -50,7 +50,7 @@ export class Git {
 
   async rollback(): Promise<void> {
     await this.run(['reset', '--hard', 'HEAD']);
-    await this.run(['clean', '-fd']);
+    await this.run(['clean', '-fd', '-e', '.mrs-norris/']);
   }
 
   async trackedFiles(): Promise<string[]> {
@@ -58,7 +58,11 @@ export class Git {
   }
 
   async grepWord(term: string): Promise<{ file: string; line: number }[]> {
-    const { stdout } = await execa('git', ['grep', '-n', '-F', '-w', '-e', term], { cwd: this.root, reject: false });
+    const { stdout, exitCode } = await execa('git', ['grep', '-n', '-I', '-F', '-w', '-e', term], {
+      cwd: this.root,
+      reject: false,
+    });
+    if (exitCode !== 0 && exitCode !== 1) throw new Error(`git grep failed with exit code ${exitCode}`);
     return lines(stdout).map((hit) => {
       const [, file, line] = /^(.+?):(\d+):/.exec(hit)!;
       return { file, line: Number(line) };
