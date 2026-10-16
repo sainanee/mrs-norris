@@ -5,10 +5,7 @@
     "target": "ES2023",
     "outDir": "dist",
     "rootDir": "src",
-    "strict": true,
-    "types": ["node"],
-    "esModuleInterop": true,
-    "skipLibCheck": true
+    "strict": true
   },
   "include": ["src"]
 }
