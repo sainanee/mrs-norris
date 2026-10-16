@@ -13,12 +13,13 @@ export async function runTests(root: string, pkg: PackageConfig): Promise<TestRu
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mrs-norris-'));
   try {
     const reportFile = path.join(tmpDir, 'report.json');
-    const command = pkg.runner ? appendArgs(pkg.commands.test, reporterArgs(pkg.runner, reportFile)) : pkg.commands.test;
+    const quoted = `'${reportFile.replaceAll("'", `'\\''`)}'`;
+    const command = pkg.runner ? appendArgs(pkg.commands.test, reporterArgs(pkg.runner, quoted)) : pkg.commands.test;
     const { exitCode, stdout, stderr, durationMs } = await runCommand(command, { cwd });
     const raw = pkg.runner ? await fs.readFile(reportFile, 'utf8').catch(() => undefined) : undefined;
     return {
       ok: exitCode === 0,
-      results: pkg.runner && raw !== undefined ? parseTestReport(pkg.runner, raw, cwd) : [],
+      results: pkg.runner && raw !== undefined ? parseTestReport(pkg.runner, raw, root) : [],
       durationMs,
       reportMissing: pkg.runner !== null && raw === undefined,
       output: [stdout, stderr].filter(Boolean).join('\n').split('\n').slice(-OUTPUT_LINES).join('\n'),
