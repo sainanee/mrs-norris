@@ -1,0 +1,57 @@
+{
+  "stats": { "suites": 1, "tests": 3, "passes": 1, "pending": 1, "failures": 1 },
+  "tests": [
+    {
+      "title": "works",
+      "fullTitle": "suite works",
+      "file": "__ROOT__/tests/a.test.ts",
+      "duration": 2,
+      "currentRetry": 0,
+      "err": {}
+    },
+    {
+      "title": "fails",
+      "fullTitle": "suite fails",
+      "file": "__ROOT__/tests/a.test.ts",
+      "duration": 5,
+      "currentRetry": 0,
+      "err": { "message": "expected 2 to equal 3", "name": "AssertionError" }
+    },
+    {
+      "title": "is skipped",
+      "fullTitle": "suite is skipped",
+      "file": "__ROOT__/tests/a.test.ts",
+      "currentRetry": 0,
+      "err": {}
+    }
+  ],
+  "pending": [
+    {
+      "title": "is skipped",
+      "fullTitle": "suite is skipped",
+      "file": "__ROOT__/tests/a.test.ts",
+      "currentRetry": 0,
+      "err": {}
+    }
+  ],
+  "failures": [
+    {
+      "title": "fails",
+      "fullTitle": "suite fails",
+      "file": "__ROOT__/tests/a.test.ts",
+      "duration": 5,
+      "currentRetry": 0,
+      "err": { "message": "expected 2 to equal 3", "name": "AssertionError" }
+    }
+  ],
+  "passes": [
+    {
+      "title": "works",
+      "fullTitle": "suite works",
+      "file": "__ROOT__/tests/a.test.ts",
+      "duration": 2,
+      "currentRetry": 0,
+      "err": {}
+    }
+  ]
+}
