@@ -1,4 +1,5 @@
-import { query, type CanUseTool, type Options, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type Options, type Query } from '@anthropic-ai/claude-agent-sdk';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { assertApiKey, createClaudeAgent } from '../../src/agent/claude.js';
@@ -45,25 +46,45 @@ describe('edit', () => {
       model: 'claude-opus-5-5',
       cwd: root,
       tools: ['Read', 'Grep', 'Glob', 'Edit', 'Write'],
-      allowedTools: ['Read', 'Grep', 'Glob'],
       permissionMode: 'default',
       settingSources: [],
       strictMcpConfig: true,
+      persistSession: false,
     });
+    expect(options.systemPrompt).toContain(root);
+    expect(options).not.toHaveProperty('allowedTools');
   });
 
-  test.each([
-    ['Edit', path.join(root, 'src/a.ts'), 'allow'],
-    ['Write', 'src/a.ts', 'allow'],
-    ['Edit', path.join(root, 'src/b.ts'), 'deny'],
-    ['Read', '/etc/passwd', 'deny'],
-  ])('%s on %s is %sed', async (toolName, filePath, behavior) => {
+  async function decide(repo: string, allowedPaths: string[], toolName: string, input: Record<string, unknown>) {
     replyWith({ result: 'done' });
-    await createClaudeAgent({ model: 'm', root }).edit('x', { allowedPaths: ['src/a.ts'] });
-    const canUseTool = call(0).options.canUseTool as CanUseTool;
+    await createClaudeAgent({ model: 'm', root: repo }).edit('x', { allowedPaths });
+    const canUseTool = mockedQuery.mock.lastCall![0].options!.canUseTool!;
     const signal = new AbortController().signal;
-    const decision = await canUseTool(toolName, { file_path: filePath }, { signal, toolUseID: 't', requestId: 'r' });
-    expect(decision?.behavior).toBe(behavior);
+    return (await canUseTool(toolName, input, { signal, toolUseID: 't', requestId: 'r' }))?.behavior;
+  }
+
+  test.each([
+    ['Edit', { file_path: path.join(root, 'src/a.ts') }, 'allow'],
+    ['Write', { file_path: 'src/a.ts' }, 'allow'],
+    ['Edit', { file_path: path.join(root, 'src/b.ts') }, 'deny'],
+    ['Read', { file_path: path.join(root, 'src/b.ts') }, 'allow'],
+    ['Read', { file_path: '/home/me/.aws/credentials' }, 'deny'],
+    ['Grep', { pattern: 'foo' }, 'allow'],
+    ['Glob', { pattern: 'src/**/*.ts' }, 'allow'],
+    ['Glob', { pattern: '*', path: '/home/me' }, 'deny'],
+    ['Glob', { pattern: '../**' }, 'deny'],
+  ])('%s %o is %sed', async (toolName, input, behavior) => {
+    expect(await decide(root, ['src/a.ts'], toolName, input)).toBe(behavior);
+  });
+
+  test('denies writing an allowed path that is a symlink out of the repo', async () => {
+    const tmp = path.resolve(import.meta.dirname, '../../.tmp');
+    await fs.mkdir(tmp, { recursive: true });
+    const repo = await fs.mkdtemp(path.join(tmp, 'agent-'));
+    const outside = await fs.mkdtemp(path.join(tmp, 'outside-'));
+    await fs.writeFile(path.join(outside, 'secret.ts'), '');
+    await fs.symlink(path.join(outside, 'secret.ts'), path.join(repo, 'link.ts'));
+    expect(await decide(repo, ['link.ts'], 'Edit', { file_path: path.join(repo, 'link.ts') })).toBe('deny');
   });
 
   test('throws when the run ends in an error', async () => {
@@ -95,16 +116,12 @@ describe('judge', () => {
   });
 });
 
-test.each([
-  [{}, true],
-  [{ ANTHROPIC_API_KEY: 'x' }, false],
-])('assertApiKey(%o) throws: %s', (env, throws) => {
-  const check = expect(() => assertApiKey(env));
-  if (throws) {
-    check.toThrow(
-      'ANTHROPIC_API_KEY is not set. Get a key at https://console.anthropic.com and export it before running mrs-norris.',
-    );
-  } else {
-    check.not.toThrow();
-  }
+test('assertApiKey throws when ANTHROPIC_API_KEY is missing', () => {
+  expect(() => assertApiKey({})).toThrow(
+    'ANTHROPIC_API_KEY is not set. Get a key at https://console.anthropic.com and export it before running mrs-norris.',
+  );
+});
+
+test('assertApiKey passes when ANTHROPIC_API_KEY is set', () => {
+  expect(() => assertApiKey({ ANTHROPIC_API_KEY: 'x' })).not.toThrow();
 });

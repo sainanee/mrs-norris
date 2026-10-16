@@ -1,4 +1,5 @@
 import { query, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import type { Usage } from '../types.js';
@@ -16,25 +17,67 @@ export function assertApiKey(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
+// Resolves symlinks through the deepest existing ancestor, so a new file under a symlinked
+// directory is judged by where it would really land.
+function realPath(file: string): string {
+  try {
+    return fs.realpathSync(file);
+  } catch {
+    const parent = path.dirname(file);
+    return parent === file ? file : path.join(realPath(parent), path.basename(file));
+  }
+}
+
 export function createClaudeAgent(opts: { model: string; root: string }): Agent {
+  const root = path.resolve(opts.root);
+  const realRoot = realPath(root);
   const total: Usage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
+  const real = (file: unknown) => realPath(path.resolve(root, String(file)));
+  const inRepo = (file: unknown) => {
+    const rel = path.relative(realRoot, real(file));
+    return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+  };
+
+  function permitted(toolName: string, input: Record<string, unknown>, writable: Set<string>): boolean {
+    switch (toolName) {
+      case 'Read':
+        return inRepo(input.file_path);
+      case 'Grep':
+        return inRepo(input.path ?? root);
+      case 'Glob': {
+        const pattern = String(input.pattern);
+        return inRepo(input.path ?? root) && !path.isAbsolute(pattern) && !pattern.split('/').includes('..');
+      }
+      case 'Edit':
+      case 'Write':
+        return inRepo(input.file_path) && writable.has(real(input.file_path));
+      default:
+        return false;
+    }
+  }
+
   async function run(prompt: string, tools: string[], allowedPaths: string[]): Promise<string> {
-    const writable = new Set(allowedPaths.map((p) => path.resolve(opts.root, p)));
-    // Write tools are left out of allowedTools, so in 'default' mode every Edit/Write call
-    // (and any read outside the repo) comes here instead of being auto-approved.
+    const writable = new Set(allowedPaths.map(real));
+    // Nothing is in allowedTools and the mode is 'default', so every tool call that needs
+    // approval comes here; a stranger's repo must not steer reads or writes outside itself.
     const canUseTool: CanUseTool = async (toolName, input) =>
-      WRITE_TOOLS.includes(toolName) && writable.has(path.resolve(opts.root, String(input.file_path)))
+      permitted(toolName, input, writable)
         ? { behavior: 'allow' }
-        : { behavior: 'deny', message: `Not allowed. Only these files may be modified: ${allowedPaths.join(', ')}` };
+        : {
+            behavior: 'deny',
+            message: `Not allowed: only read inside ${root}; only modify: ${allowedPaths.join(', ') || 'nothing'}`,
+          };
 
     const messages = query({
       prompt,
       options: {
         model: opts.model,
-        cwd: opts.root,
+        cwd: root,
+        // An omitted systemPrompt is sent as empty, and the claude_code preset pulls in auto-memory
+        // and the user's environment, so give the model the repo root it needs for absolute paths.
+        systemPrompt: `You are mrs-norris's code-cleanup assistant, working in the repository at ${root}. Always use absolute paths under ${root}. Never read or write anything outside it.`,
         tools,
-        allowedTools: READ_TOOLS,
         permissionMode: 'default',
         canUseTool,
         // We run in other people's repos: ignore their (and our user's) settings, hooks, CLAUDE.md and MCP servers.
