@@ -1,6 +1,6 @@
 import ts from 'typescript';
 
-export interface ParsedSource {
+interface ParsedSource {
   file: ts.SourceFile;
   leaves: ts.Node[];
   comments: ts.CommentRange[];
@@ -17,9 +17,7 @@ export function parseSource(source: string, fileName: string): ParsedSource {
 
   const visit = (node: ts.Node) => {
     // JSDoc nodes duplicate comment text that the comment ranges already report.
-    const children = node
-      .getChildren(file)
-      .filter((child) => child.kind < ts.SyntaxKind.FirstJSDocNode || child.kind > ts.SyntaxKind.LastJSDocNode);
+    const children = node.getChildren(file).filter((child) => !ts.isJSDoc(child));
     if (children.length) {
       shape.push(`${node.kind}/${children.length}`);
       return children.forEach(visit);
@@ -39,8 +37,9 @@ export function parseSource(source: string, fileName: string): ParsedSource {
   return { file, leaves, comments: [...comments.values()], shape };
 }
 
-/** True when the two versions parse to the same tree with the same token text, so only comments and whitespace outside tokens differ. */
+/** True when the two versions parse to the same tree with the same token text and shebang, so only comments and whitespace outside tokens differ. */
 export function codeTokensEqual(before: string, after: string, fileName: string): boolean {
   const [a, b] = [parseSource(before, fileName).shape, parseSource(after, fileName).shape];
-  return a.length === b.length && a.every((entry, i) => entry === b[i]);
+  // The shebang is trivia to the parser, but a bin cannot run without it.
+  return ts.getShebang(before) === ts.getShebang(after) && a.length === b.length && a.every((entry, i) => entry === b[i]);
 }

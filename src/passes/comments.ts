@@ -3,17 +3,13 @@ import path from 'node:path';
 import { listComments, protectedComments } from '../adapters/node/comments.js';
 import { codeTokensEqual } from '../adapters/node/tokens.js';
 import { changeId } from '../changeId.js';
-import { PROTECTED_DOCS } from '../config.js';
-import { isSourceFile, matchesAny } from '../metrics/classify.js';
+import { isSourceFile } from '../metrics/classify.js';
 import type { ProofResult } from '../types.js';
-import { isPublicFile, type PassContext } from './context.js';
+import { isEditable, isPublicFile, type PassContext } from './context.js';
 
 export async function runCommentPass(ctx: PassContext): Promise<void> {
-  const skip = [...ctx.config.ignore, ...PROTECTED_DOCS];
   // git ls-files lists paths sorted.
-  const files = (await ctx.git.trackedFiles()).filter(
-    (file) => isSourceFile(file) && ctx.scope.includes(file) && !matchesAny(file, skip),
-  );
+  const files = (await ctx.git.trackedFiles()).filter((file) => isSourceFile(file) && isEditable(ctx, file));
   for (const file of files) {
     const before = await fs.readFile(path.join(ctx.root, file), 'utf8');
     if (listComments(before, file).length === 0) continue;
@@ -21,7 +17,13 @@ export async function runCommentPass(ctx: PassContext): Promise<void> {
     const proof = async (): Promise<ProofResult> => {
       const after = await fs.readFile(path.join(ctx.root, file), 'utf8');
       if (!codeTokensEqual(before, after, file)) return { ok: false, reason: 'code changed, not just comments' };
-      const removed = kept.find((comment) => !after.includes(comment));
+      // Matched as a multiset of real comments, so duplicates count and string literals don't.
+      const remaining = listComments(after, file);
+      const removed = kept.find((comment) => {
+        const i = remaining.indexOf(comment);
+        if (i !== -1) remaining.splice(i, 1);
+        return i === -1;
+      });
       return removed === undefined ? { ok: true } : { ok: false, reason: `removed a protected comment: ${removed.slice(0, 60)}` };
     };
     await ctx.verify(
@@ -45,11 +47,13 @@ function editPrompt(file: string, style: string[]): string {
 Remove inline comments that restate the code (like \`// increment counter\`) and stale comments that no longer match the code.
 
 Never remove:
+- any comment containing \`@\` or \`#\`
+- triple-slash directives (\`/// <reference ... />\`)
+- tool and bundler pragmas (eslint, prettier, istanbul/c8/v8 coverage, biome, webpack magic comments, sourceMappingURL, __PURE__, __NO_SIDE_EFFECTS__)
 - license or copyright headers
+- TODO and FIXME comments
 - JSDoc/TSDoc on public API
-- tool directives (eslint-disable, @ts-expect-error, @ts-ignore, prettier-ignore, coverage-ignore pragmas)
 - comments that explain why something non-obvious is done
-- TODOs that reference an issue
 
 Don't change any code, whitespace inside strings, or formatting beyond removing comment lines.${styleRules}`;
 }

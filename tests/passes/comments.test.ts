@@ -80,19 +80,26 @@ test('an edit that only removes a restating comment passes the proof', async () 
   expect(proofs).toEqual([{ ok: true }]);
 });
 
+const DIRECTIVE = '// eslint-disable-next-line no-console';
+const TWICE = `${DIRECTIVE}\nconsole.log(1);\n${DIRECTIVE}\nconsole.log(2);\n`;
+const TODO_IN_STRING = "// TODO fix\nconst hint = '// TODO fix';\n";
+
 test.each([
-  ['also renames a variable', (s: string) => dropRestating(s).replaceAll('b', 'c'), 'code changed, not just comments'],
+  ['also renames a variable', MATH, (s: string) => dropRestating(s).replaceAll('b', 'c'), 'code changed, not just comments'],
+  ['removes a tool directive', MATH, (s: string) => s.replace(`${DIRECTIVE}\n`, ''), `removed a protected comment: ${DIRECTIVE}`],
+  ['removes one of two identical directives', TWICE, (s: string) => s.replace(`${DIRECTIVE}\n`, ''), `removed a protected comment: ${DIRECTIVE}`],
   [
-    'removes a tool directive',
-    (s: string) => s.replace('// eslint-disable-next-line no-console\n', ''),
-    'removed a protected comment: // eslint-disable-next-line no-console',
+    'removes a TODO whose text survives in a string',
+    TODO_IN_STRING,
+    (s: string) => s.replace('// TODO fix\n', ''),
+    'removed a protected comment: // TODO fix',
   ],
-])('an edit that %s fails the proof', async (_, rewrite, reason) => {
-  const { proofs } = await run(rewrite);
+])('an edit that %s fails the proof', async (_, source, rewrite, reason) => {
+  const { proofs } = await run(rewrite, { files: { 'src/math.ts': source } });
   expect(proofs).toEqual([{ ok: false, reason }]);
 });
 
-test('JSDoc on an export is protected only in a library public surface file', async () => {
+test('JSDoc is protected only in a library public surface file', async () => {
   const dropDoc = (s: string) => s.replace('/** Adds two numbers. */\n', '');
   const surface = (isLibrary: boolean): [string, PublicSurface][] => [['.', { isLibrary, files: ['src/math.ts'] }]];
   expect((await run(dropDoc, { surfaces: surface(false) })).proofs).toEqual([{ ok: true }]);

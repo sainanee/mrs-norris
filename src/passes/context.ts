@@ -1,6 +1,7 @@
 import type { Agent } from '../agent/types.js';
-import type { Config } from '../config.js';
+import { type Config, PROTECTED_DOCS } from '../config.js';
 import type { Git } from '../git.js';
+import { matchesAny } from '../metrics/classify.js';
 import type {
   ChangeRecord,
   DeadCodeCandidate,
@@ -33,4 +34,9 @@ export function isPublicFile(ctx: PassContext, file: string): boolean {
   const dirs = [...ctx.surfaces.keys()].filter((dir) => file.startsWith(`${dir}/`));
   const surface = ctx.surfaces.get(dirs.sort((a, b) => b.length - a.length)[0] ?? '.');
   return surface?.isLibrary === true && surface.files.includes(file);
+}
+
+/** Whether a pass may change the file: it is in scope, not ignored and not a protected doc. */
+export function isEditable(ctx: PassContext, file: string): boolean {
+  return ctx.scope.includes(file) && !matchesAny(file, [...ctx.config.ignore, ...PROTECTED_DOCS]);
 }

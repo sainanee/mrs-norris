@@ -4,12 +4,11 @@ import { z } from 'zod';
 import { LOCKFILES, lockfileUpdateCommand, removeDependency } from '../adapters/node/dependencies.js';
 import { exists } from '../adapters/node/detect.js';
 import { changeId } from '../changeId.js';
-import { PROTECTED_DOCS } from '../config.js';
 import { runCommand } from '../exec.js';
 import type { Git } from '../git.js';
-import { isTestFile, matchesAny } from '../metrics/classify.js';
+import { isTestFile } from '../metrics/classify.js';
 import type { DeadCodeCandidate, Finding, PackageConfig } from '../types.js';
-import { isPublicFile, type PassContext } from './context.js';
+import { isEditable, isPublicFile, type PassContext } from './context.js';
 
 export const VerdictSchema = z.object({
   unused: z.boolean(),
@@ -38,7 +37,7 @@ export async function runDeadCodePass(ctx: PassContext): Promise<void> {
 }
 
 async function handle(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate): Promise<void> {
-  if (!ctx.scope.includes(c.file) || matchesAny(c.file, [...ctx.config.ignore, ...PROTECTED_DOCS])) return;
+  if (!isEditable(ctx, c.file)) return;
   // Test files are pruned by a later pass under a stricter proof.
   if (c.kind === 'file' && isTestFile(c.file)) return;
   const finding = (kind: Finding['kind'], note: string) => {

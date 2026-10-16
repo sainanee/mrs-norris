@@ -12,8 +12,11 @@ test.each([
   expect(countLines(source, fileName).comment).toBe(0);
 });
 
-test('counts JSDoc blocks as comments', () => {
-  expect(countLines('/**\n * Doc.\n */\nexport const x = 1;\n', 'a.ts')).toEqual({ code: 1, comment: 3, blank: 0 });
+test.each([
+  ['before code', '/**\n * Doc.\n */\nexport const x = 1;\n', { code: 1, comment: 3, blank: 0 }],
+  ['at the end of the file', 'export const x = 1;\n/** @typedef {number} N */\n', { code: 1, comment: 1, blank: 0 }],
+])('counts JSDoc blocks %s as comments', (_, source, expected) => {
+  expect(countLines(source, 'a.ts')).toEqual(expected);
 });
 
 test('counts the continuation lines of a block comment opened after code as comment', () => {
