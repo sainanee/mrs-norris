@@ -1,8 +1,9 @@
 import ts from 'typescript';
+import { parseSource } from '../adapters/node/tokens.js';
 
 /** Counts lines by kind; a line holding code plus a trailing comment is code. */
 export function countLines(source: string, fileName: string): { code: number; comment: number; blank: number } {
-  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest);
+  const { file, leaves, comments } = parseSource(source, fileName);
   const lineCount = file.getLineStarts().length - (source.endsWith('\n') ? 1 : 0);
   const hasCode = new Array<boolean>(lineCount).fill(false);
   const hasComment = new Array<boolean>(lineCount).fill(false);
@@ -11,19 +12,11 @@ export function countLines(source: string, fileName: string): { code: number; co
     for (let line = file.getLineAndCharacterOfPosition(start).line; line <= last; line++) flags[line] = true;
   };
 
-  const visit = (node: ts.Node) => {
-    if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return;
-    const children = node.getChildren(file);
-    if (children.length) return children.forEach(visit);
-    const comments = [
-      ...(ts.getLeadingCommentRanges(source, node.pos) ?? []),
-      ...(ts.getTrailingCommentRanges(source, node.end) ?? []),
-    ];
-    for (const comment of comments) mark(hasComment, comment.pos, comment.end);
-    const isWhitespace = node.kind === ts.SyntaxKind.JsxText && (node as ts.JsxText).containsOnlyTriviaWhiteSpaces;
-    if (node.end > node.getStart(file) && !isWhitespace) mark(hasCode, node.getStart(file), node.end);
-  };
-  visit(file);
+  for (const comment of comments) mark(hasComment, comment.pos, comment.end);
+  for (const leaf of leaves) {
+    const isWhitespace = leaf.kind === ts.SyntaxKind.JsxText && (leaf as ts.JsxText).containsOnlyTriviaWhiteSpaces;
+    if (leaf.end > leaf.getStart(file) && !isWhitespace) mark(hasCode, leaf.getStart(file), leaf.end);
+  }
 
   const counts = { code: 0, comment: 0, blank: 0 };
   for (let line = 0; line < lineCount; line++) counts[hasCode[line] ? 'code' : hasComment[line] ? 'comment' : 'blank']++;

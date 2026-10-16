@@ -9,7 +9,7 @@ import { runCommand } from '../exec.js';
 import type { Git } from '../git.js';
 import { isTestFile, matchesAny } from '../metrics/classify.js';
 import type { DeadCodeCandidate, Finding, PackageConfig } from '../types.js';
-import type { PassContext } from './context.js';
+import { isPublicFile, type PassContext } from './context.js';
 
 export const VerdictSchema = z.object({
   unused: z.boolean(),
@@ -45,7 +45,7 @@ async function handle(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate
     ctx.log.findings.push({ kind, category: 'dead-code', file: c.file, symbol: c.symbol, note });
   };
 
-  if (!ctx.config.allowPublicApiChanges && isPublic(ctx, c.file)) {
+  if (!ctx.config.allowPublicApiChanges && isPublicFile(ctx, c.file)) {
     return finding('public-export', 'Unused public export left alone (set allowPublicApiChanges to allow)');
   }
   const references = await referencesOutside(ctx.git, c);
@@ -64,12 +64,6 @@ async function handle(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate
     { id: changeId('dead-code', c.file, c.symbol), category: 'dead-code', title, reason: verdict.reason, allowedPaths },
     apply,
   );
-}
-
-function isPublic(ctx: PassContext, file: string): boolean {
-  const dirs = [...ctx.surfaces.keys()].filter((dir) => file.startsWith(`${dir}/`));
-  const surface = ctx.surfaces.get(dirs.sort((a, b) => b.length - a.length)[0] ?? '.');
-  return surface?.isLibrary === true && surface.files.includes(file);
 }
 
 async function removal(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate) {
