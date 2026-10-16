@@ -30,6 +30,33 @@ describe('nodePublicSurface', () => {
     });
   });
 
+  test('directory re-exports resolve index files of any extension', async () => {
+    const root = await makeTempRepo({
+      'package.json': json({ name: 'lib', main: 'dist/index.js' }),
+      'src/index.ts': "export * from './Button';\n",
+      'src/Button/index.tsx': 'export const Button = 1;\n',
+    });
+    expect((await nodePublicSurface(root, '.')).files).toEqual(['src/Button/index.tsx', 'src/index.ts']);
+  });
+
+  test('entries under lib fall back to the path as written when no src counterpart exists', async () => {
+    const root = await makeTempRepo({
+      'package.json': json({ name: 'lib', main: 'lib/index.js' }),
+      'lib/index.js': 'export const a = 1;\n',
+    });
+    expect((await nodePublicSurface(root, '.')).files).toEqual(['lib/index.js']);
+  });
+
+  test('wildcard export targets include every matching source file', async () => {
+    const root = await makeTempRepo({
+      'package.json': json({ name: 'lib', exports: { './features/*': './dist/features/*.js' } }),
+      'src/features/a.ts': 'export const a = 1;\n',
+      'src/features/b.ts': 'export const b = 1;\n',
+      'src/other.ts': 'export const c = 1;\n',
+    });
+    expect((await nodePublicSurface(root, '.')).files).toEqual(['src/features/a.ts', 'src/features/b.ts']);
+  });
+
   test('private packages are not libraries', async () => {
     const root = await makeTempRepo({
       'package.json': json({ name: 'app', private: true, main: 'dist/index.js' }),

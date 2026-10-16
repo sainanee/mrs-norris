@@ -1,3 +1,4 @@
+import fg from 'fast-glob';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { PublicSurface } from '../../types.js';
@@ -12,16 +13,27 @@ const isFile = (file: string) => fs.stat(file).then((stat) => stat.isFile(), () 
 const strings = (value: unknown): string[] =>
   typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
 
-async function resolveModule(specifier: string): Promise<string | null> {
+async function resolveModules(specifier: string): Promise<string[]> {
   const stem = specifier.replace(/(\.d)?\.[cm]?[jt]sx?$/, '');
   const candidates = [
     specifier,
     ...EXTENSIONS.map((ext) => specifier + ext),
     ...EXTENSIONS.map((ext) => stem + ext),
-    path.join(specifier, 'index.ts'),
+    ...EXTENSIONS.map((ext) => path.join(specifier, `index${ext}`)),
   ];
-  for (const candidate of candidates) if (await isFile(candidate)) return candidate;
-  return null;
+  if (specifier.includes('*')) return fg(candidates, { absolute: true });
+  for (const candidate of candidates) if (await isFile(candidate)) return [candidate];
+  return [];
+}
+
+async function resolveEntry(pkgRoot: string, entry: string): Promise<string[]> {
+  const normalized = path.posix.normalize(entry);
+  const swapped = normalized.replace(BUILD_DIR, 'src/');
+  for (const target of new Set([swapped, normalized])) {
+    const files = await resolveModules(path.join(pkgRoot, target));
+    if (files.length > 0) return files;
+  }
+  return [];
 }
 
 export async function nodePublicSurface(root: string, pkgDir: string): Promise<PublicSurface> {
@@ -30,20 +42,15 @@ export async function nodePublicSurface(root: string, pkgDir: string): Promise<P
   const isLibrary = pkg.private !== true && [pkg.exports, pkg.main, pkg.module].some((entry) => entry !== undefined);
   if (!isLibrary) return { isLibrary, files: [] };
 
-  const entries = strings([pkg.exports, pkg.main, pkg.module, pkg.types]).map((entry) => {
-    const normalized = path.posix.normalize(entry);
-    return path.join(pkgRoot, normalized.replace(BUILD_DIR, 'src/'));
-  });
-
   const surface = new Set<string>();
-  const pending = (await Promise.all(entries.map(resolveModule))).filter((file) => file !== null);
+  const entries = strings([pkg.exports, pkg.main, pkg.module, pkg.types]);
+  const pending = (await Promise.all(entries.map((entry) => resolveEntry(pkgRoot, entry)))).flat();
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
     if (surface.has(file)) continue;
     surface.add(file);
     const source = await fs.readFile(file, 'utf8');
     for (const [, specifier] of source.matchAll(REEXPORT)) {
-      const resolved = await resolveModule(path.resolve(path.dirname(file), specifier!));
-      if (resolved) pending.push(resolved);
+      pending.push(...(await resolveModules(path.resolve(path.dirname(file), specifier!))));
     }
   }
 

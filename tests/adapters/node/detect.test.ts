@@ -57,6 +57,22 @@ describe('detectNodePackages', () => {
     });
     expect(await detectNodePackages(root)).toMatchObject([{ language: 'typescript', runner: 'vitest' }]);
   });
+
+  test("prefers the package's own runner over the root's", async () => {
+    const root = await makeTempRepo({
+      'package.json': json({ workspaces: ['packages/*'], devDependencies: { vitest: '^1' } }),
+      'packages/a/package.json': json({ name: 'a', devDependencies: { jest: '^29' } }),
+    });
+    expect(await detectNodePackages(root)).toMatchObject([{ runner: 'jest' }]);
+  });
+
+  test('a pnpm-workspace.yaml without packages falls back to the root package', async () => {
+    const root = await makeTempRepo({
+      'package.json': json({ name: 'app' }),
+      'pnpm-workspace.yaml': 'onlyBuiltDependencies:\n  - esbuild\n',
+    });
+    expect(await detectNodePackages(root)).toMatchObject([{ name: 'app', dir: '.' }]);
+  });
 });
 
 describe('guessNodeCommands', () => {

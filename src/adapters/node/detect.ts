@@ -31,11 +31,11 @@ export async function readPackageJson(dir: string): Promise<PackageJson> {
 const hasDep = (pkg: PackageJson, name: string) =>
   name in { ...pkg.dependencies, ...pkg.devDependencies };
 
-async function workspaceGlobs(root: string, rootPkg: PackageJson): Promise<string[] | null> {
+async function workspaceGlobs(root: string, rootPkg: PackageJson): Promise<string[] | undefined> {
   const { workspaces } = rootPkg;
-  if (workspaces) return Array.isArray(workspaces) ? workspaces : (workspaces.packages ?? []);
-  const text = await fs.readFile(path.join(root, 'pnpm-workspace.yaml'), 'utf8').catch(() => null);
-  return text === null ? null : ((parse(text) as { packages?: string[] }).packages ?? []);
+  if (workspaces) return Array.isArray(workspaces) ? workspaces : workspaces.packages;
+  const text = await fs.readFile(path.join(root, 'pnpm-workspace.yaml'), 'utf8').catch(() => '');
+  return (parse(text) as { packages?: string[] } | null)?.packages;
 }
 
 async function detectPackageManager(root: string): Promise<PackageManager> {
@@ -64,7 +64,7 @@ export async function detectNodePackages(root: string): Promise<DetectedPackage[
         name: pkg.name ?? path.basename(path.resolve(root, dir)),
         dir,
         language: typescript ? 'typescript' : 'javascript',
-        runner: RUNNERS.find((runner) => hasDep(pkg, runner) || hasDep(rootPkg, runner)) ?? null,
+        runner: RUNNERS.find((runner) => hasDep(pkg, runner)) ?? RUNNERS.find((runner) => hasDep(rootPkg, runner)) ?? null,
         packageManager,
       };
     }),
