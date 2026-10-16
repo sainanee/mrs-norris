@@ -77,6 +77,14 @@ describe('Git', () => {
     expect(await git.isClean()).toBe(true);
   });
 
+  test('commitAll skips user hooks', async () => {
+    const { root, git } = await setup();
+    await fs.writeFile(path.join(root, '.git/hooks/pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
+    expect(await git.commitAll('change')).toBe(await git.head());
+    expect(await git.isClean()).toBe(true);
+  });
+
   test.each([
     ['get', 'const getter = 1;\n', []],
     ['$state', 'x\nconst $state = 1;\n', [{ file: 'f.ts', line: 2 }]],

@@ -73,9 +73,9 @@ test('an edit that breaks the tests is rolled back', async () => {
 test.each([
   ['typecheck', { typecheck: 'exit 1', lint: 'exit 1' }],
   ['lint', { typecheck: 'true', lint: 'exit 1' }],
-])('a failing %s is rolled back before later checks run', async (label, commands) => {
+])('a failing %s is rolled back before later checks and packages run', async (label, commands) => {
   const runTests = vi.fn(stubRun(true, []));
-  const { ctx, write, read } = await setup({ packages: [pkg('.', commands)], runTests });
+  const { ctx, write, read } = await setup({ packages: [pkg('.', commands), pkg('packages/b')], runTests });
   const record = await applyAndVerify(ctx, change(), () => write('src/a.ts', 'export const a = 2;\n'));
   expect(record.detail).toMatch(new RegExp(`^${label} failed in \\.`));
   expect(runTests).not.toHaveBeenCalled();
@@ -148,12 +148,30 @@ test.each([
   expect(record.status).toBe('committed');
 });
 
-test('a baseline test vanishing from the results is rolled back', async () => {
-  const runTests = stubRun(false, [result('t1', 'passed')]);
-  const { ctx, write, read } = await setup({ runTests, baselinePassing: new Set(['t1', 't2']) });
+test.each([
+  ['.', ['t1', 't2'], 't2'],
+  ['packages/a', ['packages/a/x.test.ts > t2'], 'packages/a/x.test.ts > t2'],
+  ['./packages/a/', ['packages/a/x.test.ts > t2'], 'packages/a/x.test.ts > t2'],
+])('in package %s, a baseline test vanishing beside a flaky failure is rolled back', async (dir, baselinePassing, missing) => {
+  const runTests = stubRun(false, [result('flaky', 'failed'), result('t1', 'passed')]);
+  const { ctx, write, read } = await setup({
+    packages: [pkg(dir)],
+    runTests,
+    flaky: new Set(['flaky']),
+    baselinePassing: new Set(baselinePassing),
+  });
   const record = await applyAndVerify(ctx, change(), () => write('src/a.ts', 'export const a = 2;\n'));
   expect(record.status).toBe('rolled-back');
-  expect(record.detail).toMatch(/^tests failed in \..*t2/);
+  expect(record.detail).toMatch(new RegExp(`^tests failed in .*missing ${missing}`));
+  expect(await read('src/a.ts')).toBe(ORIGINAL);
+});
+
+test('a non-zero test exit with no failed test is rolled back', async () => {
+  const runTests = stubRun(false, [result('t1', 'passed')]);
+  const { ctx, write, read } = await setup({ runTests, baselinePassing: new Set(['t1']) });
+  const record = await applyAndVerify(ctx, change(), () => write('src/a.ts', 'export const a = 2;\n'));
+  expect(record.status).toBe('rolled-back');
+  expect(record.detail).toMatch(/^tests failed in \./);
   expect(await read('src/a.ts')).toBe(ORIGINAL);
 });
 

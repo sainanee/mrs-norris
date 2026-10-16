@@ -44,7 +44,8 @@ export class Git {
 
   async commitAll(message: string): Promise<string> {
     await this.run(['add', '-A']);
-    await this.run(['commit', '-m', message]);
+    // User hooks could rewrite verified content or reject the mrs-norris(...) subject.
+    await this.run(['commit', '--no-verify', '-m', message]);
     return this.head();
   }
 

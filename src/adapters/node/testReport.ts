@@ -20,6 +20,7 @@ export function appendArgs(command: string, args: string[]): string {
 interface JestReport {
   testResults: {
     name: string;
+    status: string;
     assertionResults: { fullName: string; status: string; duration?: number | null }[];
   }[];
 }
@@ -38,12 +39,16 @@ function result(root: string, absFile: string, name: string, status: TestResult[
 }
 
 function parseJestShaped(report: JestReport, root: string): TestResult[] {
-  return report.testResults.flatMap((suite) =>
-    suite.assertionResults.map((t) => {
+  return report.testResults.flatMap((suite) => {
+    // A suite that fails to load reports no assertions; without a result of its own it would vanish.
+    if (suite.status === 'failed' && suite.assertionResults.length === 0) {
+      return [result(root, suite.name, '(suite failed to load)', 'failed')];
+    }
+    return suite.assertionResults.map((t) => {
       const status = t.status === 'passed' || t.status === 'failed' ? t.status : 'skipped';
       return result(root, suite.name, t.fullName, status, t.duration ?? 0);
-    }),
-  );
+    });
+  });
 }
 
 function parseMocha(report: MochaReport, root: string): TestResult[] {

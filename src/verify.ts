@@ -73,16 +73,19 @@ async function firstFailure(ctx: VerifyContext): Promise<string | undefined> {
   }
 }
 
-// A non-zero exit is accepted only when flaky failures fully explain it: a suite that fails
-// to load drops its tests from the report, so every baseline-passing test must still pass.
+// A non-zero exit is accepted only when flaky failures fully explain it. A load error outside
+// any test fails no id, and a suite that fails to load drops its tests from the report, so at
+// least one test must have failed and every baseline-passing test must still pass.
 function testProblem(run: TestRun, pkg: PackageConfig, ctx: VerifyContext): string | undefined {
   if (run.ok) return;
-  if (run.results.length === 0) return lastLines(run.output);
-  const failed = run.results.filter((r) => r.status === 'failed' && !ctx.flaky.has(r.id)).map((r) => r.id);
-  if (failed.length > 0) return failed.slice(0, DETAIL_IDS).join(', ');
+  const failed = run.results.filter((r) => r.status === 'failed').map((r) => r.id);
+  if (failed.length === 0) return lastLines(run.output);
+  const unexplained = failed.filter((id) => !ctx.flaky.has(id));
+  if (unexplained.length > 0) return unexplained.slice(0, DETAIL_IDS).join(', ');
   const passed = new Set(run.results.filter((r) => r.status === 'passed').map((r) => r.id));
   // Ids are repo-relative, so another package's baseline tests are never in this run.
-  const inPackage = (id: string) => pkg.dir === '.' || id.startsWith(`${pkg.dir}/`);
+  const dir = path.posix.normalize(pkg.dir).replace(/\/$/, '');
+  const inPackage = (id: string) => dir === '.' || id.startsWith(`${dir}/`);
   const missing = [...ctx.baselinePassing].filter((id) => inPackage(id) && !passed.has(id));
   if (missing.length > 0) return `missing ${missing.slice(0, DETAIL_IDS).join(', ')}`;
 }

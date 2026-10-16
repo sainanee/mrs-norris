@@ -18,6 +18,13 @@ describe('parseTestReport', () => {
     ]);
   });
 
+  test.each(['vitest', 'jest'] as const)('%s suite that failed to load yields one failed result', (runner) => {
+    const raw = JSON.stringify({ testResults: [{ name: '/repo/tests/b.test.ts', status: 'failed', assertionResults: [] }] });
+    expect(parseTestReport(runner, raw, '/repo')).toEqual([
+      { id: 'tests/b.test.ts > (suite failed to load)', file: 'tests/b.test.ts', status: 'failed', durationMs: 0 },
+    ]);
+  });
+
   test('missing durations become 0 and others are rounded', () => {
     const results = parseTestReport('vitest', fixture('vitest'), '/repo');
     expect(results.map((r) => r.durationMs)).toEqual([2, 8, 0]);
