@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import type { PackageCommands, PackageConfig, PackageManager, Runner } from '../../types.js';
+import { LOCKFILES } from './dependencies.js';
 
 export interface PackageJson {
   name?: string;
@@ -21,7 +22,7 @@ type DetectedPackage = Omit<PackageConfig, 'commands'>;
 
 const RUNNERS: Runner[] = ['vitest', 'jest', 'mocha'];
 
-const exists = (file: string) => fs.access(file).then(() => true, () => false);
+export const exists = (file: string) => fs.access(file).then(() => true, () => false);
 
 export async function readPackageJson(dir: string): Promise<PackageJson> {
   const text = await fs.readFile(path.join(dir, 'package.json'), 'utf8').catch(() => '{}');
@@ -39,8 +40,8 @@ async function workspaceGlobs(root: string, rootPkg: PackageJson): Promise<strin
 }
 
 async function detectPackageManager(root: string): Promise<PackageManager> {
-  if (await exists(path.join(root, 'pnpm-lock.yaml'))) return 'pnpm';
-  return (await exists(path.join(root, 'yarn.lock'))) ? 'yarn' : 'npm';
+  if (await exists(path.join(root, LOCKFILES.pnpm))) return 'pnpm';
+  return (await exists(path.join(root, LOCKFILES.yarn))) ? 'yarn' : 'npm';
 }
 
 export async function detectNodePackages(root: string): Promise<DetectedPackage[]> {

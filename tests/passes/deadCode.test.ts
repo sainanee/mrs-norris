@@ -97,8 +97,9 @@ test.each([
   ['a short symbol', { ...unusedHelper, symbol: 'get' }, 'src/api.ts', 'client.get(1);\n'],
   ['a $-prefixed symbol', { ...unusedHelper, symbol: '$state' }, 'src/view.svelte', 'let count = $state(0);\n'],
   ['a file basename', { kind: 'file', pkgDir: '.', file: 'src/orphan.ts' }, 'src/load.ts', "await import('./orphan');\n"],
+  ['a declaration file basename', { kind: 'file', pkgDir: '.', file: 'src/globals.d.ts' }, 'src/load.ts', "import type { G } from './globals';\n"],
 ] as const)('%s referenced elsewhere becomes a finding without asking Claude', async (_, candidate, file, content) => {
-  const { agent, changes, findings } = await run([candidate], { files: { [file]: content } });
+  const { agent, changes, findings } = await run([candidate], { files: { [file]: content }, ignore: [] });
   expect(findings).toEqual([
     { kind: 'possibly-unused', category: 'dead-code', file: candidate.file, symbol: candidate.symbol, note: `Referenced in: ${file}` },
   ]);
@@ -115,10 +116,25 @@ test.each([
   expect(changes).toEqual([]);
 });
 
+test('a judge error becomes a finding and the pass moves on to the next candidate', async () => {
+  let calls = 0;
+  const judge = () => {
+    if (++calls === 1) throw new Error('network down');
+    return HIGH;
+  };
+  const { changes, findings } = await run([unusedHelper, { kind: 'file', pkgDir: '.', file: 'src/orphan.ts' }], { judge });
+  expect(findings).toEqual([
+    { kind: 'possibly-unused', category: 'dead-code', file: 'src/math.ts', symbol: 'unusedHelper', note: 'Claude: error: network down' },
+  ]);
+  expect(changes).toMatchObject([{ title: 'Delete unused file src/orphan.ts' }]);
+});
+
+const libHelper: DeadCodeCandidate = { kind: 'export', pkgDir: 'packages/lib', file: 'packages/lib/src/index.ts', symbol: 'helper' };
+const libFiles = { 'packages/lib/src/index.ts': 'export const helper = 1;\n' };
+
 test('an export in the public surface of the package with the longest matching dir is left alone', async () => {
-  const candidate: DeadCodeCandidate = { kind: 'export', pkgDir: 'packages/lib', file: 'packages/lib/src/index.ts', symbol: 'helper' };
-  const { agent, findings } = await run([candidate], {
-    files: { 'packages/lib/src/index.ts': 'export const helper = 1;\n' },
+  const { agent, findings } = await run([libHelper], {
+    files: libFiles,
     packages: [pkg(), pkg('packages/lib')],
     surfaces: [
       ['.', { isLibrary: false, files: [] }],
@@ -135,6 +151,20 @@ test('an export in the public surface of the package with the longest matching d
     },
   ]);
   expect(agent.prompts).toEqual([]);
+});
+
+test('a nested non-library package owns its files over an enclosing library', async () => {
+  const { changes, findings } = await run([libHelper], {
+    files: libFiles,
+    packages: [pkg('packages/lib')],
+    surfaces: [
+      ['packages', { isLibrary: true, files: ['packages/lib/src/index.ts'] }],
+      ['packages/lib', { isLibrary: false, files: [] }],
+    ],
+    edit: async () => {},
+  });
+  expect(findings).toEqual([]);
+  expect(changes).toMatchObject([{ title: 'Remove unused export `helper` from packages/lib/src/index.ts' }]);
 });
 
 test.each([

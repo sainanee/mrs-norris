@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { LOCKFILES, lockfileUpdateCommand, removeDependency } from '../adapters/node/dependencies.js';
+import { exists } from '../adapters/node/detect.js';
 import { changeId } from '../changeId.js';
 import { PROTECTED_DOCS } from '../config.js';
 import { runCommand } from '../exec.js';
@@ -18,11 +19,10 @@ export const VerdictSchema = z.object({
 
 const LOCKFILE_NAMES = new Set(Object.values(LOCKFILES));
 
-const exists = (file: string) => fs.access(file).then(() => true, () => false);
-
 /** Tracked files that mention the candidate as a whole word, apart from its own file, lockfiles and (for dependencies) manifests. */
 export async function referencesOutside(git: Git, c: DeadCodeCandidate): Promise<string[]> {
-  const term = c.kind === 'file' ? path.posix.parse(c.file).name : c.symbol!;
+  // A declaration file foo.d.ts is imported as ./foo.
+  const term = c.kind === 'file' ? path.posix.parse(c.file).name.replace(/\.d$/, '') : c.symbol!;
   const excluded = (file: string) => {
     const base = path.posix.basename(file);
     return file === c.file || LOCKFILE_NAMES.has(base) || (c.kind === 'dependency' && base === 'package.json');
@@ -51,7 +51,12 @@ async function handle(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate
   const references = await referencesOutside(ctx.git, c);
   if (references.length > 0) return finding('possibly-unused', `Referenced in: ${references.join(', ')}`);
   const contents = await fs.readFile(path.join(ctx.root, c.file), 'utf8');
-  const verdict = await ctx.agent.judge(judgePrompt(c, contents), VerdictSchema);
+  let verdict: z.infer<typeof VerdictSchema>;
+  try {
+    verdict = await ctx.agent.judge(judgePrompt(c, contents), VerdictSchema);
+  } catch (error) {
+    return finding('possibly-unused', `Claude: error: ${(error as Error).message}`);
+  }
   if (!verdict.unused || verdict.confidence !== 'high') return finding('possibly-unused', `Claude: ${verdict.reason}`);
 
   const { title, allowedPaths, apply } = await removal(ctx, pkg, c);
