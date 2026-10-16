@@ -18,28 +18,41 @@ export function assertApiKey(env: NodeJS.ProcessEnv = process.env): void {
 }
 
 // Resolves symlinks through the deepest existing ancestor, so a new file under a symlinked
-// directory is judged by where it would really land.
-function realPath(file: string): string {
+// directory is judged by where it would really land. Returns null when an entry exists but
+// can't be resolved (a dangling or looping symlink): where a write to it lands is unknown.
+function realPath(file: string): string | null {
   try {
     return fs.realpathSync(file);
   } catch {
-    const parent = path.dirname(file);
-    return parent === file ? file : path.join(realPath(parent), path.basename(file));
+    try {
+      fs.lstatSync(file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        const parent = realPath(path.dirname(file));
+        return parent && path.join(parent, path.basename(file));
+      }
+    }
+    return null;
   }
 }
 
 export function createClaudeAgent(opts: { model: string; root: string }): Agent {
   const root = path.resolve(opts.root);
-  const realRoot = realPath(root);
+  const realRoot = realPath(root)!;
   const total: Usage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
-  const real = (file: unknown) => realPath(path.resolve(root, String(file)));
+  const real = (file: string) => realPath(path.resolve(root, file));
   const inRepo = (file: unknown) => {
-    const rel = path.relative(realRoot, real(file));
+    // The CLI trims paths and expands a leading ~ before running a tool, so such a path
+    // would not reach the file it resolves to here.
+    if (typeof file !== 'string' || file.startsWith('~') || file !== file.trim()) return false;
+    const target = real(file);
+    if (target === null) return false;
+    const rel = path.relative(realRoot, target);
     return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
   };
 
-  function permitted(toolName: string, input: Record<string, unknown>, writable: Set<string>): boolean {
+  function permitted(toolName: string, input: Record<string, unknown>, writable: Set<string | null>): boolean {
     switch (toolName) {
       case 'Read':
         return inRepo(input.file_path);
@@ -47,11 +60,11 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
         return inRepo(input.path ?? root);
       case 'Glob': {
         const pattern = String(input.pattern);
-        return inRepo(input.path ?? root) && !path.isAbsolute(pattern) && !pattern.split('/').includes('..');
+        return inRepo(input.path ?? root) && !path.isAbsolute(pattern) && !pattern.includes('..');
       }
       case 'Edit':
       case 'Write':
-        return inRepo(input.file_path) && writable.has(real(input.file_path));
+        return inRepo(input.file_path) && writable.has(real(input.file_path as string));
       default:
         return false;
     }

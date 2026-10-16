@@ -53,6 +53,7 @@ describe('edit', () => {
     });
     expect(options.systemPrompt).toContain(root);
     expect(options).not.toHaveProperty('allowedTools');
+    expect(options.hooks!.PreToolUse![0].matcher).toBeUndefined();
   });
 
   async function decide(repo: string, allowedPaths: string[], toolName: string, input: Record<string, unknown>) {
@@ -73,11 +74,16 @@ describe('edit', () => {
     ['Glob', { pattern: 'src/**/*.ts' }, 'allow'],
     ['Glob', { pattern: '*', path: '/home/me' }, 'deny'],
     ['Glob', { pattern: '../**' }, 'deny'],
-  ])('%s %o is %sed', async (toolName, input, behavior) => {
+    ['Glob', { pattern: '{..,x}/**' }, 'deny'],
+    ['Grep', { pattern: '.', path: '~' }, 'deny'],
+    ['Grep', { pattern: '.', path: '~/.aws' }, 'deny'],
+    ['Read', { file_path: '~/.aws/credentials' }, 'deny'],
+    ['Grep', { pattern: '.', path: ' /etc' }, 'deny'],
+  ])('%s %o → %s', async (toolName, input, behavior) => {
     expect(await decide(root, ['src/a.ts'], toolName, input)).toBe(behavior);
   });
 
-  /** A real repo holding `own.ts` and `link.ts`, a symlink to a file outside it. */
+  /** A repo with `own.ts`, and `link.ts` / `dangling.ts` linking to an existing / missing file outside it. */
   async function repoWithOutsideLink() {
     const tmp = path.resolve(import.meta.dirname, '../../.tmp');
     await fs.mkdir(tmp, { recursive: true });
@@ -86,12 +92,16 @@ describe('edit', () => {
     await fs.writeFile(path.join(outside, 'secret.ts'), '');
     await fs.writeFile(path.join(repo, 'own.ts'), '');
     await fs.symlink(path.join(outside, 'secret.ts'), path.join(repo, 'link.ts'));
+    await fs.symlink(path.join(outside, 'missing.ts'), path.join(repo, 'dangling.ts'));
     return repo;
   }
 
-  test('denies writing an allowed path that is a symlink out of the repo', async () => {
+  test.each([
+    ['Edit', 'link.ts'],
+    ['Write', 'dangling.ts'],
+  ])('denies %s on an allowed path %s that is a symlink out of the repo', async (toolName, file) => {
     const repo = await repoWithOutsideLink();
-    expect(await decide(repo, ['link.ts'], 'Edit', { file_path: path.join(repo, 'link.ts') })).toBe('deny');
+    expect(await decide(repo, [file], toolName, { file_path: path.join(repo, file) })).toBe('deny');
   });
 
   test('the PreToolUse hook denies reading an in-repo symlink that points outside', async () => {
