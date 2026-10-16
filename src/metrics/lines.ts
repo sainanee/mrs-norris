@@ -15,7 +15,11 @@ export function countLines(source: string, fileName: string): { code: number; co
     if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return;
     const children = node.getChildren(file);
     if (children.length) return children.forEach(visit);
-    for (const comment of ts.getLeadingCommentRanges(source, node.pos) ?? []) mark(hasComment, comment.pos, comment.end);
+    const comments = [
+      ...(ts.getLeadingCommentRanges(source, node.pos) ?? []),
+      ...(ts.getTrailingCommentRanges(source, node.end) ?? []),
+    ];
+    for (const comment of comments) mark(hasComment, comment.pos, comment.end);
     const isWhitespace = node.kind === ts.SyntaxKind.JsxText && (node as ts.JsxText).containsOnlyTriviaWhiteSpaces;
     if (node.end > node.getStart(file) && !isWhitespace) mark(hasCode, node.getStart(file), node.end);
   };
