@@ -1,4 +1,4 @@
-import { query, type CanUseTool } from '@anthropic-ai/claude-agent-sdk';
+import { query, type CanUseTool, type HookCallback, type PreToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -59,15 +59,20 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
 
   async function run(prompt: string, tools: string[], allowedPaths: string[]): Promise<string> {
     const writable = new Set(allowedPaths.map(real));
-    // Nothing is in allowedTools and the mode is 'default', so every tool call that needs
-    // approval comes here; a stranger's repo must not steer reads or writes outside itself.
+    const denial = `Not allowed: only read inside ${root}; only modify: ${allowedPaths.join(', ') || 'nothing'}`;
+    // Nothing is in allowedTools and the mode is 'default', so calls that need approval come to
+    // canUseTool. The CLI may still auto-approve in-repo reads without asking (an in-repo symlink
+    // can point outside), so the PreToolUse hook, which sees every call, applies the same rules.
     const canUseTool: CanUseTool = async (toolName, input) =>
-      permitted(toolName, input, writable)
-        ? { behavior: 'allow' }
+      permitted(toolName, input, writable) ? { behavior: 'allow' } : { behavior: 'deny', message: denial };
+    const guard: HookCallback = async (hookInput) => {
+      const { tool_name, tool_input } = hookInput as PreToolUseHookInput;
+      return permitted(tool_name, tool_input as Record<string, unknown>, writable)
+        ? {}
         : {
-            behavior: 'deny',
-            message: `Not allowed: only read inside ${root}; only modify: ${allowedPaths.join(', ') || 'nothing'}`,
+            hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: denial },
           };
+    };
 
     const messages = query({
       prompt,
@@ -80,6 +85,7 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
         tools,
         permissionMode: 'default',
         canUseTool,
+        hooks: { PreToolUse: [{ hooks: [guard] }] },
         // We run in other people's repos: ignore their (and our user's) settings, hooks, CLAUDE.md and MCP servers.
         settingSources: [],
         strictMcpConfig: true,

@@ -1,4 +1,4 @@
-import { query, type Options, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { query, type Options, type PreToolUseHookInput, type Query } from '@anthropic-ai/claude-agent-sdk';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
@@ -77,14 +77,40 @@ describe('edit', () => {
     expect(await decide(root, ['src/a.ts'], toolName, input)).toBe(behavior);
   });
 
-  test('denies writing an allowed path that is a symlink out of the repo', async () => {
+  /** A real repo holding `own.ts` and `link.ts`, a symlink to a file outside it. */
+  async function repoWithOutsideLink() {
     const tmp = path.resolve(import.meta.dirname, '../../.tmp');
     await fs.mkdir(tmp, { recursive: true });
     const repo = await fs.mkdtemp(path.join(tmp, 'agent-'));
     const outside = await fs.mkdtemp(path.join(tmp, 'outside-'));
     await fs.writeFile(path.join(outside, 'secret.ts'), '');
+    await fs.writeFile(path.join(repo, 'own.ts'), '');
     await fs.symlink(path.join(outside, 'secret.ts'), path.join(repo, 'link.ts'));
+    return repo;
+  }
+
+  test('denies writing an allowed path that is a symlink out of the repo', async () => {
+    const repo = await repoWithOutsideLink();
     expect(await decide(repo, ['link.ts'], 'Edit', { file_path: path.join(repo, 'link.ts') })).toBe('deny');
+  });
+
+  test('the PreToolUse hook denies reading an in-repo symlink that points outside', async () => {
+    const repo = await repoWithOutsideLink();
+    replyWith({ result: 'done' });
+    await createClaudeAgent({ model: 'm', root: repo }).edit('x', { allowedPaths: [] });
+    const hook = call(0).options.hooks!.PreToolUse![0].hooks[0];
+    const read = (file: string) =>
+      hook(
+        {
+          hook_event_name: 'PreToolUse',
+          tool_name: 'Read',
+          tool_input: { file_path: path.join(repo, file) },
+        } as PreToolUseHookInput,
+        't',
+        { signal: new AbortController().signal },
+      );
+    expect(await read('link.ts')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } });
+    expect(await read('own.ts')).toEqual({});
   });
 
   test('throws when the run ends in an error', async () => {
