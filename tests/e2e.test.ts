@@ -83,7 +83,6 @@ test('a run on the bloated fixture removes its dead code and redundant comment o
   expect(await git('branch', '--show-current')).toBe('main');
   expect(await git('rev-parse', 'main')).toBe(head);
 
-  // The config is untracked on main but committed on the branch, so a plain checkout refuses.
-  await git('checkout', '--force', branch);
+  await git('checkout', branch);
   expect((await execa(`${BIN}/vitest`, ['run'], { cwd: root, reject: false })).exitCode).toBe(0);
 });

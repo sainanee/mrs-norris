@@ -18,11 +18,12 @@ describe('Git', () => {
     expect(await git.isClean()).toBe(false);
   });
 
-  test('isClean ignores untracked files under .mrs-norris/', async () => {
+  test('changedFiles leaves out an untracked .mrs-norris/config.yaml', async () => {
     const { root, git } = await setup();
     await fs.mkdir(path.join(root, '.mrs-norris'));
     await fs.writeFile(path.join(root, '.mrs-norris/config.yaml'), 'model: x\n');
-    expect(await git.isClean()).toBe(true);
+    await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
+    expect(await git.changedFiles()).toEqual(['b.txt']);
   });
 
   test('createBranch suffixes the name when the branch already exists', async () => {
@@ -67,14 +68,17 @@ describe('Git', () => {
     expect((await git.changedFiles()).sort()).toEqual(['new.txt', 'old.txt']);
   });
 
-  test('commitAll commits everything and returns the new head sha', async () => {
+  test('commitAll commits everything but .mrs-norris/ and returns the new head sha', async () => {
     const { root, git } = await setup();
     await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
+    await fs.mkdir(path.join(root, '.mrs-norris'));
+    await fs.writeFile(path.join(root, '.mrs-norris/config.yaml'), 'model: x\n');
     const sha = await git.commitAll('a\n\nMrs-Norris-Change-Id: mn-1');
     expect(sha).toBe(await git.head());
-    const { stdout } = await execa('git', ['log', '-1', '--format=%B'], { cwd: root });
-    expect(stdout).toContain('Mrs-Norris-Change-Id: mn-1');
-    expect(await git.isClean()).toBe(true);
+    const show = async (...args: string[]) => (await execa('git', args, { cwd: root })).stdout;
+    expect(await show('log', '-1', '--format=%B')).toContain('Mrs-Norris-Change-Id: mn-1');
+    expect(await show('show', '--format=', '--name-only')).toBe('b.txt');
+    expect(await show('status', '--porcelain')).toBe('?? .mrs-norris/');
   });
 
   test('commitAll skips user hooks', async () => {

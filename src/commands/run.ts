@@ -60,9 +60,6 @@ function branchName(now: Date): string {
 
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 
-const CONFIG_DIR = '.mrs-norris/';
-const CONFIG_COMMIT = 'mrs-norris: add configuration';
-
 export async function runMrsNorris(
   root: string,
   opts: RunOptions,
@@ -122,9 +119,7 @@ export async function runMrsNorris(
       }
       throw new Error('Baseline is not green. mrs-norris needs passing tests to prove it preserved behavior.');
     }
-    const changed = await git.changedFiles();
-    const configChanges = changed.filter((file) => file.startsWith(CONFIG_DIR));
-    const stray = changed.filter((file) => !file.startsWith(CONFIG_DIR));
+    const stray = await git.changedFiles();
     if (stray.length > 0) {
       throw new Error(
         `Your test command changed files in the repo (${stray.slice(0, 3).join(', ')}). mrs-norris needs a test run that leaves the tree clean.`,
@@ -145,24 +140,9 @@ export async function runMrsNorris(
     log.flaky = [...new Set(baselines.flatMap((b) => b.flaky))];
     const original = (await git.currentBranch()) ?? (await git.head());
 
-    // .mrs-norris/ changes are committed on the branch only, so checking out the original
-    // branch removes them; write back what the user had so the next run finds its config.
-    // A deleted file comes back from the original branch anyway.
-    const configFiles = (
-      await Promise.all(
-        configChanges.map(async (file) => {
-          const content = await fs.readFile(path.join(root, file)).catch(() => null);
-          return content === null ? [] : [{ target: path.join(root, file), content }];
-        }),
-      )
-    ).flat();
     const returnToOriginal = async (g: Git) => {
       await g.rollback();
       await g.checkout(original);
-      for (const { target, content } of configFiles) {
-        await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.writeFile(target, content);
-      }
     };
     cleanup = async () => {
       killLiveChildren();
@@ -172,7 +152,7 @@ export async function runMrsNorris(
       const branch = await recovery.currentBranch();
       await returnToOriginal(recovery);
       if (branch === null || branch === original) return;
-      if ((await recovery.subjects(`${original}..${branch}`)).some((subject) => subject !== CONFIG_COMMIT)) {
+      if ((await recovery.subjects(`${original}..${branch}`)).length > 0) {
         io.print(`Kept branch ${branch} with the changes committed so far.`);
       } else {
         await recovery.deleteBranch(branch);
@@ -180,7 +160,6 @@ export async function runMrsNorris(
       }
     };
     const branch = await git.createBranch(branchName(now()));
-    if (configChanges.length > 0) await git.commitAll(CONFIG_COMMIT);
 
     const verifyContext = {
       root,

@@ -1,4 +1,8 @@
 import { execa } from 'execa';
+import { CONFIG_DIR } from './config.js';
+
+// Never committed or cleaned, so the user's config stays as they left it across checkouts.
+const EXCLUDED = `${CONFIG_DIR}/`;
 
 export class Git {
   private closed = false;
@@ -34,9 +38,8 @@ export class Git {
     return exitCode === 0 ? stdout : null;
   }
 
-  async isClean(ignorePrefixes = ['.mrs-norris/']): Promise<boolean> {
-    const files = await this.changedFiles();
-    return files.every((file) => ignorePrefixes.some((prefix) => file.startsWith(prefix)));
+  async isClean(): Promise<boolean> {
+    return (await this.changedFiles()).length === 0;
   }
 
   async currentBranch(): Promise<string | null> {
@@ -70,11 +73,15 @@ export class Git {
 
   async changedFiles(): Promise<string[]> {
     const out = await this.run(['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all']);
-    return out.split('\0').filter(Boolean).map((entry) => entry.slice(3));
+    return out
+      .split('\0')
+      .filter(Boolean)
+      .map((entry) => entry.slice(3))
+      .filter((file) => !file.startsWith(EXCLUDED));
   }
 
   async commitAll(message: string): Promise<string> {
-    await this.run(['add', '-A']);
+    await this.run(['add', '-A', '--', '.', `:(exclude)${EXCLUDED}`]);
     // User hooks could rewrite verified content or reject the mrs-norris(...) subject.
     await this.run(['commit', '--no-verify', '-m', message]);
     return this.head();
@@ -82,7 +89,7 @@ export class Git {
 
   async rollback(): Promise<void> {
     await this.run(['reset', '--hard', 'HEAD']);
-    await this.run(['clean', '-fd', '-e', '.mrs-norris/']);
+    await this.run(['clean', '-fd', '-e', EXCLUDED]);
   }
 
   async trackedFiles(): Promise<string[]> {

@@ -110,17 +110,15 @@ test('a run commits on its own branch, writes the report and leaves the user whe
   expect(branch).toBe(BRANCH);
   expect(await git('branch', '--show-current')).toBe('main');
   expect(await git('rev-parse', 'HEAD')).toBe(head);
-  expect((await git('log', `main..${branch}`, '--format=%s')).split('\n')).toEqual([
-    'mrs-norris(comments): Trim redundant comments in src/a.ts',
-    'mrs-norris: add configuration',
-  ]);
+  expect(await git('log', `main..${branch}`, '--format=%s')).toBe('mrs-norris(comments): Trim redundant comments in src/a.ts');
   expect(await git('show', `${branch}:src/a.ts`)).toBe('export const one = 1;');
   expect(summary.after.commentLines).toBe(summary.before.commentLines - 1);
 
   expect(reportPath).toBe(path.join(root, '.mrs-norris/reports/20261016-143200.md'));
   const report = await fs.readFile(reportPath, 'utf8');
   expect(printed.slice(-2)).toEqual([report, 'Report written to .mrs-norris/reports/20261016-143200.md']);
-  // The configuration is back as it was before the run: untracked, with reports ignored.
+  // The untracked configuration stays out of the branch, so merging it doesn't collide.
+  await git('merge', branch);
   expect(await loadConfig(root)).toEqual(defaultConfig([pkg('.')]));
   expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
 });

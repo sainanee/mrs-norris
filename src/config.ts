@@ -21,7 +21,7 @@ export const DEFAULT_IGNORE = [
 
 export const PROTECTED_DOCS = ['**/*.md', '**/*.mdx', '**/*.rst', 'docs/**'];
 
-const CONFIG_DIR = '.mrs-norris';
+export const CONFIG_DIR = '.mrs-norris';
 const CONFIG_PATH = `${CONFIG_DIR}/config.yaml`;
 
 const PackageSchema = z.object({
