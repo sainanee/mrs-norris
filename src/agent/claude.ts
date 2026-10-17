@@ -1,4 +1,5 @@
 import { query, type CanUseTool, type HookCallback, type PreToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
+import { execa } from 'execa';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -53,15 +54,31 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
     return rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
   };
 
-  function permitted(toolName: string, input: Record<string, unknown>, writable: Set<string | null>): boolean {
+  const ignoredFiles = new Map<string, Promise<boolean>>();
+  // Gitignored files such as .env hold secrets more often than code. Only a target that is itself
+  // a file can be checked: a search over a directory is not filtered per file. Anything but a
+  // clear "not ignored" from git counts as ignored.
+  const ignoredFile = (file: string): Promise<boolean> => {
+    const target = real(file)!;
+    if (!fs.statSync(target, { throwIfNoEntry: false })?.isFile()) return Promise.resolve(false);
+    let ignored = ignoredFiles.get(target);
+    if (ignored === undefined) {
+      ignored = execa('git', ['check-ignore', '-q', target], { cwd: root, reject: false }).then(({ exitCode }) => exitCode !== 1);
+      ignoredFiles.set(target, ignored);
+    }
+    return ignored;
+  };
+  const readable = async (file: unknown) => inRepo(file) && !(await ignoredFile(file as string));
+
+  async function permitted(toolName: string, input: Record<string, unknown>, writable: Set<string | null>): Promise<boolean> {
     switch (toolName) {
       case 'Read':
-        return inRepo(input.file_path);
+        return readable(input.file_path);
       case 'Grep':
-        return inRepo(input.path ?? root);
+        return readable(input.path ?? root);
       case 'Glob': {
         const pattern = String(input.pattern);
-        return inRepo(input.path ?? root) && !path.isAbsolute(pattern) && !pattern.includes('..');
+        return !path.isAbsolute(pattern) && !pattern.includes('..') && (await readable(input.path ?? root));
       }
       case 'Edit':
       case 'Write':
@@ -73,15 +90,15 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
 
   async function run(prompt: string, tools: string[], allowedPaths: string[]): Promise<string> {
     const writable = new Set(allowedPaths.map(real));
-    const denial = `Not allowed: only read inside ${root}; only modify: ${allowedPaths.join(', ') || 'nothing'}`;
+    const denial = `Not allowed: only read non-ignored files inside ${root}; only modify: ${allowedPaths.join(', ') || 'nothing'}`;
     // Nothing is in allowedTools and the mode is 'default', so calls that need approval come to
     // canUseTool. The CLI may still auto-approve in-repo reads without asking (an in-repo symlink
     // can point outside), so the PreToolUse hook, which sees every call, applies the same rules.
     const canUseTool: CanUseTool = async (toolName, input) =>
-      permitted(toolName, input, writable) ? { behavior: 'allow' } : { behavior: 'deny', message: denial };
+      (await permitted(toolName, input, writable)) ? { behavior: 'allow' } : { behavior: 'deny', message: denial };
     const guard: HookCallback = async (hookInput) => {
       const { tool_name, tool_input } = hookInput as PreToolUseHookInput;
-      return permitted(tool_name, tool_input as Record<string, unknown>, writable)
+      return (await permitted(tool_name, tool_input as Record<string, unknown>, writable))
         ? {}
         : {
             hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: denial },

@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { assertApiKey, createClaudeAgent } from '../../src/agent/claude.js';
+import { makeTempRepo } from '../helpers/tempRepo.js';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: vi.fn() }));
 
@@ -83,14 +84,21 @@ describe('edit', () => {
     expect(await decide(root, ['src/a.ts'], toolName, input)).toBe(behavior);
   });
 
+  test.each([
+    ['Read', { file_path: '.env' }, 'deny'],
+    ['Grep', { pattern: 'KEY', path: '.env' }, 'deny'],
+    ['Read', { file_path: 'src/b.ts' }, 'allow'],
+  ])('%s %o in a repo that ignores .env → %s', async (toolName, input, behavior) => {
+    const repo = await makeTempRepo({ '.gitignore': '.env\n', 'src/b.ts': '' });
+    await fs.writeFile(path.join(repo, '.env'), 'KEY=1\n');
+    expect(await decide(repo, [], toolName, input)).toBe(behavior);
+  });
+
   /** A repo with `own.ts`, and `link.ts` / `dangling.ts` linking to an existing / missing file outside it. */
   async function repoWithOutsideLink() {
-    const tmp = path.resolve(import.meta.dirname, '../../.tmp');
-    await fs.mkdir(tmp, { recursive: true });
-    const repo = await fs.mkdtemp(path.join(tmp, 'agent-'));
-    const outside = await fs.mkdtemp(path.join(tmp, 'outside-'));
+    const repo = await makeTempRepo({ 'own.ts': '' });
+    const outside = await fs.mkdtemp(path.join(path.resolve(import.meta.dirname, '../../.tmp'), 'outside-'));
     await fs.writeFile(path.join(outside, 'secret.ts'), '');
-    await fs.writeFile(path.join(repo, 'own.ts'), '');
     await fs.symlink(path.join(outside, 'secret.ts'), path.join(repo, 'link.ts'));
     await fs.symlink(path.join(outside, 'missing.ts'), path.join(repo, 'dangling.ts'));
     return repo;
