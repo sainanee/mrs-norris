@@ -143,9 +143,14 @@ export async function runMrsNorris(
 
     const branch = await git.unusedBranchName(branchName(now()));
 
-    const returnToOriginal = async (g: Git) => {
+    // Returns whether the branch was kept: it is deleted when it holds no commit.
+    const returnToOriginal = async (g: Git): Promise<boolean> => {
       await g.rollback();
       await g.checkout(original);
+      if ((await g.subjects(`${original}..${branch}`)).length > 0) return true;
+      await g.deleteBranch(branch);
+      io.print(`Deleted branch ${branch}: no changes were committed.`);
+      return false;
     };
     cleanup = async () => {
       killLiveChildren();
@@ -154,13 +159,7 @@ export async function runMrsNorris(
       const recovery = new Git(root);
       if (!(await recovery.branchExists(branch))) return;
       recovery.pinTo(branch);
-      await returnToOriginal(recovery);
-      if ((await recovery.subjects(`${original}..${branch}`)).length > 0) {
-        io.print(`Kept branch ${branch} with the changes committed so far.`);
-      } else {
-        await recovery.deleteBranch(branch);
-        io.print(`Deleted branch ${branch}: no changes were committed.`);
-      }
+      if (await returnToOriginal(recovery)) io.print(`Kept branch ${branch} with the changes committed so far.`);
     };
     await git.createBranch(branch);
     git.pinTo(branch);

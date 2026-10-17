@@ -128,18 +128,20 @@ test('a run commits on its own branch, writes the report and leaves the user whe
   expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
 });
 
-test('an edit that throws mid-pass is rolled back and the run completes', async () => {
-  const { root, git, run } = await setup();
+test('an edit that throws mid-pass is rolled back, and the run completes and deletes its empty branch', async () => {
+  const { root, run, printed, branches } = await setup();
   const agent = new ScriptedAgent({
     edit: async () => {
       await fs.writeFile(path.join(root, 'src/a.ts'), 'BROKEN\n');
       throw new Error('agent crashed');
     },
   });
-  const { branch, summary } = await run({ only: ['comments'] }, { agent });
+  const { summary } = await run({ only: ['comments'] }, { agent });
   expect(summary.log.changes).toMatchObject([{ status: 'rolled-back', detail: 'error: agent crashed' }]);
-  expect(await git('show', `${branch}:src/a.ts`)).toBe(A.trimEnd());
   expect(summary.finalCheckOk).toBe(true);
+  expect(await fs.readFile(path.join(root, 'src/a.ts'), 'utf8')).toBe(A);
+  expect(await branches()).toEqual([]);
+  expect(printed.at(-1)).toBe(`Deleted branch ${BRANCH}: no changes were committed.`);
 });
 
 test.each([
@@ -301,23 +303,23 @@ test('a test command that changes files at baseline stops the run before branchi
 });
 
 test("files the final test run changes reach neither branch", async () => {
-  // The third run is the final one: two baseline runs come first and no change is verified.
+  // The fourth run is the final one: two baseline runs and the comment change's check come first.
   const check = [
     "import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';",
     "let runs = 0;",
     "try { runs = Number(readFileSync('.git/check-runs', 'utf8')); } catch {}",
     "writeFileSync('.git/check-runs', String(runs + 1));",
-    "if (runs === 2) appendFileSync('src/a.ts', 'export const stray = 1;\\n');",
+    "if (runs === 3) appendFileSync('src/a.ts', 'export const stray = 1;\\n');",
   ].join('\n');
   const { git, run, head } = await setup({ files: { 'check.js': check } });
-  const { branch } = await run({ only: ['dead-code'] });
+  const { branch } = await run({ only: ['comments'] });
   expect(await git('rev-parse', 'HEAD')).toBe(head);
   expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
-  expect(await git('show', `${branch}:src/a.ts`)).toBe(A.trimEnd());
+  expect(await git('show', `${branch}:src/a.ts`)).toBe('export const one = 1;');
 });
 
 test('runs started in the same minute get distinct branches', async () => {
   const { run } = await setup();
-  expect((await run({ only: ['dead-code'] })).branch).toBe(BRANCH);
-  expect((await run({ only: ['dead-code'] })).branch).toBe(`${BRANCH}-2`);
+  expect((await run({ only: ['comments'] })).branch).toBe(BRANCH);
+  expect((await run({ only: ['comments'] })).branch).toBe(`${BRANCH}-2`);
 });
