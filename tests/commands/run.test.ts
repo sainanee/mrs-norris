@@ -194,12 +194,17 @@ test.each([
   expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
 });
 
-test('after a signal no further change is attempted', async () => {
-  const { git, run, head } = await setup({ files: { 'src/b.ts': 'export const unusedThing = 2;\n' } });
-  vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+test('after a signal no further change is attempted, and a second signal exits at once', async () => {
+  const { root, git, run, head } = await setup({ files: { 'src/b.ts': 'export const unusedThing = 2;\n' } });
+  const exits: string[] = [];
+  vi.spyOn(process, 'exit').mockImplementation(((code: number) => {
+    exits.push(`${code} ${execFileSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' }).trim()}`);
+  }) as never);
   const edit = vi.fn(async () => {});
   const agent = new ScriptedAgent({
     judge: () => {
+      process.emit('SIGINT', 'SIGINT');
+      // A repeated Ctrl-C gives up on the cleanup and exits at once.
       process.emit('SIGINT', 'SIGINT');
       return { unused: true, confidence: 'high', reason: 'never imported' };
     },
@@ -209,18 +214,45 @@ test('after a signal no further change is attempted', async () => {
   await expect(run({ only: ['dead-code'] }, { agent, findDeadCode: async () => [candidate] })).rejects.toThrow('Aborted');
   expect(edit).not.toHaveBeenCalled();
   expect(await git('rev-parse', 'HEAD')).toBe(head);
+  expect(exits).toEqual([`130 ${BRANCH}`, '130 main']);
 });
 
 test('a signal before the branch exists only exits', async () => {
-  const { root, run } = await setup({ files: { 'check.js': 'setTimeout(() => {}, 600);\n' } });
+  const check = "import { writeFileSync } from 'node:fs';\nwriteFileSync('.git/check-started', '');\nsetTimeout(() => {}, 600);\n";
+  const { root, run } = await setup({ files: { 'check.js': check } });
   const state: string[] = [];
   vi.spyOn(process, 'exit').mockImplementation(((code: number) => {
     const branches = execFileSync('git', ['branch', '--format=%(refname:short)'], { cwd: root, encoding: 'utf8' });
     state.push(`${code} ${branches.trim()}`);
   }) as never);
-  setTimeout(() => process.emit('SIGINT', 'SIGINT'), 200);
-  await run({ only: ['dead-code'] });
+  const running = run({ only: ['dead-code'] });
+  await vi.waitFor(() => fs.access(path.join(root, '.git/check-started')));
+  process.emit('SIGINT', 'SIGINT');
+  await running;
   expect(state).toEqual(['130 main']);
+});
+
+test('a signal during a git or other non-detached command still runs the cleanup before exiting', async () => {
+  const { git, run, head, branches } = await setup();
+  const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+  // execa's signal-exit hook re-raises the signal at the process when it believes it is the last listener.
+  const realKill = process.kill.bind(process);
+  const kill = vi
+    .spyOn(process, 'kill')
+    .mockImplementation(((pid: number, signal?: string | number) => pid === process.pid || realKill(pid, signal)) as never);
+  const findDeadCode = async () => {
+    const child = execa('sleep', ['0.3']);
+    process.emit('SIGINT', 'SIGINT');
+    await child.catch(() => {});
+    return [];
+  };
+  await expect(run({ only: ['dead-code'] }, { findDeadCode })).rejects.toThrow('Aborted');
+  expect(kill.mock.calls.filter(([pid]) => pid === process.pid)).toEqual([]);
+  expect(exit.mock.calls).toEqual([[130]]);
+  expect(await git('branch', '--show-current')).toBe('main');
+  expect(await git('rev-parse', 'HEAD')).toBe(head);
+  expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
+  expect(await branches()).toEqual([]);
 });
 
 test.each([

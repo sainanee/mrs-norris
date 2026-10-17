@@ -75,16 +75,27 @@ export async function runMrsNorris(
   const abort = async () => {
     if (cleanup) await (aborting ??= cleanup());
   };
+  let signalled = false;
   const handlers = Object.entries(SIGNAL_EXIT_CODES).map(([signal, code]) => {
     const handler = () => {
-      removeHandlers();
-      // process.exit must come last: exec.ts kills running child processes on 'exit'.
-      void abort().finally(() => process.exit(code));
+      // A repeated signal gives up on the cleanup.
+      if (signalled) return process.exit(code);
+      signalled = true;
+      // Stay registered until the cleanup ends: execa's signal-exit hook re-raises the signal,
+      // killing us mid-cleanup, once it is the only listener left. process.exit must come
+      // last, because exec.ts kills running child processes on 'exit'.
+      void abort()
+        .catch((error: Error) => {
+          console.error(`mrs-norris could not restore your checkout: ${error.message}`);
+        })
+        .finally(() => {
+          removeHandlers();
+          process.exit(code);
+        });
     };
-    process.once(signal, handler);
+    process.on(signal, handler);
     return [signal, handler] as const;
   });
-  // A second signal during cleanup falls through to Node's default and terminates at once.
   const removeHandlers = () => {
     for (const [signal, handler] of handlers) process.off(signal, handler);
   };
