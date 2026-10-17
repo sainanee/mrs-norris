@@ -79,6 +79,7 @@ test('a run on the bloated fixture removes its dead code and redundant comment o
   const report = await fs.readFile(reportPath, 'utf8');
   expect(report).toContain('| Source lines |');
   expect(report).toContain('−');
+  expect(report).toMatch(/- Remove unused dependency `left-pad`: .*\(evidence-only: not test-verified\)\n/);
   expect(await git('branch', '--show-current')).toBe('main');
   expect(await git('rev-parse', 'main')).toBe(head);
 

@@ -20,7 +20,7 @@ const summary: RunSummary = {
   after,
   log: {
     changes: [
-      { id: 'mn-aaaaaaaaaa', category: 'dead-code', title: 'Remove unused dependency `left-pad`', reason: 'nothing imports it', files: ['package.json'], status: 'committed' },
+      { id: 'mn-aaaaaaaaaa', category: 'dead-code', title: 'Remove unused dependency `left-pad`', reason: 'nothing imports it', files: ['package.json'], status: 'committed', evidenceOnly: true },
       { id: 'mn-bbbbbbbbbb', category: 'simplify', title: 'Inline wrapper', reason: 'single caller', files: ['src/a.ts'], status: 'rolled-back', detail: 'tests failed' },
       { id: 'mn-cccccccccc', category: 'comments', title: 'Trim comments', reason: 'restate code', files: ['src/b.ts'], status: 'skipped' },
       { id: 'mn-dddddddddd', category: 'comments', title: 'Trim comments in c', reason: 'restate code', files: ['src/c.ts'], status: 'committed' },
@@ -67,8 +67,8 @@ describe('renderReport', () => {
   });
 
   test('lists only committed changes, grouped by category in run order', () => {
-    expect(md).toContain('## Changes\n\n### dead-code\n\n- Remove unused dependency `left-pad`: nothing imports it (`mn-aaaaaaaaaa`)');
-    expect(md).toContain('### comments\n\n- Trim comments in c: restate code (`mn-dddddddddd`)');
+    expect(md).toContain('## Changes\n\n### dead-code\n\n- Remove unused dependency `left-pad`: nothing imports it (`mn-aaaaaaaaaa`) (evidence-only: not test-verified)\n');
+    expect(md).toContain('### comments\n\n- Trim comments in c: restate code (`mn-dddddddddd`)\n\n## Rolled back');
     expect(md.indexOf('### dead-code')).toBeLessThan(md.indexOf('### comments'));
     expect(md).not.toContain('### simplify');
     expect(md).not.toContain('Trim comments:');

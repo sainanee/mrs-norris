@@ -200,7 +200,7 @@ test('an unused dependency listed in other manifests is removed from every secti
       'tools/package.json': '{\n  "dependencies": {\n    "left-pad": "^1.3.0"\n  }\n}\n',
     },
   });
-  expect(changes).toMatchObject([{ title: 'Remove unused dependency `left-pad`', allowedPaths: ['package.json'] }]);
+  expect(changes).toMatchObject([{ title: 'Remove unused dependency `left-pad`', allowedPaths: ['package.json'], evidenceOnly: true }]);
   expect(await read('package.json')).toBe(
     '{\n  "name": "app",\n  "dependencies": {\n    "zod": "^4.0.0"\n  },\n  "devDependencies": {}\n}\n',
   );

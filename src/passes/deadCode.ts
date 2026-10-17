@@ -61,11 +61,8 @@ async function handle(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate
   }
   if (!verdict.unused || verdict.confidence !== 'high') return finding('possibly-unused', `Claude: ${verdict.reason}`);
 
-  const { title, allowedPaths, apply } = await removal(ctx, pkg, c);
-  await ctx.verify(
-    { id: changeId('dead-code', c.file, c.symbol), category: 'dead-code', title, reason: verdict.reason, allowedPaths },
-    apply,
-  );
+  const { apply, ...planned } = await removal(ctx, pkg, c);
+  await ctx.verify({ id: changeId('dead-code', c.file, c.symbol), category: 'dead-code', reason: verdict.reason, ...planned }, apply);
 }
 
 async function removal(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate) {
@@ -87,6 +84,8 @@ async function removal(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidat
       return {
         title: `Remove unused dependency \`${c.symbol}\``,
         allowedPaths: lockfile ? [c.file, lockfile] : [c.file],
+        // node_modules still holds the package, so no check can fail on a wrong removal.
+        evidenceOnly: true,
         apply: async () => {
           await removeDependency(path.join(ctx.root, c.file), c.symbol!);
           if (lockfile) await updateLockfile(ctx.root, pkg);

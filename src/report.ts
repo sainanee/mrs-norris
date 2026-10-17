@@ -49,7 +49,9 @@ function findingLines(findings: Finding[], kind: Finding['kind']): string[] {
 function changesSection(changes: RunLog['changes']): string {
   const committed = changes.filter((c) => c.status === 'committed');
   const groups = CATEGORIES.flatMap((category) => {
-    const lines = committed.filter((c) => c.category === category).map((c) => `- ${c.title}: ${c.reason} (\`${c.id}\`)`);
+    const lines = committed
+      .filter((c) => c.category === category)
+      .map((c) => `- ${c.title}: ${c.reason} (\`${c.id}\`)${c.evidenceOnly ? ' (evidence-only: not test-verified)' : ''}`);
     return lines.length > 0 ? [`### ${category}\n\n${lines.join('\n')}`] : [];
   });
   return groups.length > 0 ? `## Changes\n\n${groups.join('\n\n')}` : section('Changes', []);

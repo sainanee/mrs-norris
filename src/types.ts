@@ -17,9 +17,10 @@ export interface TestRun { ok: boolean; results: TestResult[]; durationMs: numbe
 
 export interface DeadCodeCandidate { kind: 'file' | 'export' | 'dependency'; pkgDir: string; file: string; symbol?: string; line?: number }
 
-export interface PlannedChange { id: string; category: Category; title: string; reason: string; allowedPaths: string[] }
+// evidenceOnly: the checks can't catch a mistake, e.g. a removed dependency is still installed.
+export interface PlannedChange { id: string; category: Category; title: string; reason: string; allowedPaths: string[]; evidenceOnly?: boolean }
 export type ProofResult = { ok: true } | { ok: false; reason: string };
-export interface ChangeRecord { id: string; category: Category; title: string; reason: string; files: string[];
+export interface ChangeRecord { id: string; category: Category; title: string; reason: string; files: string[]; evidenceOnly?: boolean;
   status: 'committed' | 'rolled-back' | 'skipped'; detail?: string; commit?: string }
 export interface Finding { kind: 'possibly-unused' | 'public-export'; file: string; symbol?: string; note: string }
 export interface RunLog { changes: ChangeRecord[]; findings: Finding[]; flaky: string[] }
