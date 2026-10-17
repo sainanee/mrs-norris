@@ -87,8 +87,7 @@ function testProblem(run: TestRun, pkg: PackageConfig, ctx: VerifyContext): stri
   const unexplained = failed.filter((id) => !ctx.flaky.has(id));
   if (unexplained.length > 0) return unexplained.slice(0, DETAIL_IDS).join(', ');
   // Ids are repo-relative, so another package's baseline tests are never in this run.
-  const dir = path.posix.normalize(pkg.dir).replace(/\/$/, '');
-  const inPackage = (id: string) => dir === '.' || id.startsWith(`${dir}/`);
+  const inPackage = (id: string) => pkg.dir === '.' || id.startsWith(`${pkg.dir}/`);
   const missing = [...ctx.baselinePassing].filter((id) => inPackage(id) && statuses.get(id) !== 'passed');
   if (missing.length > 0) return `missing ${missing.slice(0, DETAIL_IDS).join(', ')}`;
 }

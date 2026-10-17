@@ -37,7 +37,7 @@ interface Options {
   judge?: (prompt: string) => unknown;
   edit?: (prompt: string, opts: { allowedPaths: string[] }) => Promise<void>;
   packages?: PackageConfig[];
-  surfaces?: [string, PublicSurface][];
+  surfaces?: PublicSurface[];
   ignore?: string[];
   inScope?: (file: string) => boolean;
 }
@@ -55,7 +55,7 @@ async function run(candidates: DeadCodeCandidate[], opts: Options = {}) {
     agent,
     log: newRunLog(),
     scope: { includes: opts.inScope ?? (() => true) },
-    surfaces: new Map(opts.surfaces),
+    surfaces: opts.surfaces ?? [],
     verify: async (change, apply) => {
       changes.push(change);
       await apply();
@@ -143,13 +143,13 @@ test('a judge error becomes a finding and the pass moves on to the next candidat
 const libHelper: DeadCodeCandidate = { kind: 'export', pkgDir: 'packages/lib', file: 'packages/lib/src/index.ts', symbol: 'helper' };
 const libFiles = { 'packages/lib/src/index.ts': 'export const helper = 1;\n' };
 
-test('an export in the public surface of the package with the longest matching dir is left alone', async () => {
+test('an export that any library surface lists is left alone', async () => {
   const { agent, findings } = await run([libHelper], {
     files: libFiles,
     packages: [pkg(), pkg('packages/lib')],
     surfaces: [
-      ['.', { isLibrary: false, files: [] }],
-      ['packages/lib', { isLibrary: true, files: ['packages/lib/src/index.ts'] }],
+      { isLibrary: false, files: [] },
+      { isLibrary: true, files: ['packages/lib/src/index.ts'] },
     ],
   });
   expect(findings).toEqual([
@@ -161,20 +161,6 @@ test('an export in the public surface of the package with the longest matching d
     },
   ]);
   expect(agent.prompts).toEqual([]);
-});
-
-test('a nested non-library package owns its files over an enclosing library', async () => {
-  const { changes, findings } = await run([libHelper], {
-    files: libFiles,
-    packages: [pkg('packages/lib')],
-    surfaces: [
-      ['packages', { isLibrary: true, files: ['packages/lib/src/index.ts'] }],
-      ['packages/lib', { isLibrary: false, files: [] }],
-    ],
-    edit: async () => {},
-  });
-  expect(findings).toEqual([]);
-  expect(changes).toMatchObject([{ title: 'Remove unused export `helper` from packages/lib/src/index.ts' }]);
 });
 
 test.each([

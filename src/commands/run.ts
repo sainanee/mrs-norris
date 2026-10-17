@@ -134,9 +134,7 @@ export async function runMrsNorris(
       testCount: sum(baselines.map((b) => b.testCount)),
       durationMs: sum(baselines.map((b) => b.durationMs)),
     });
-    const surfaces = new Map(
-      await Promise.all(config.packages.map(async (pkg) => [pkg.dir, await nodePublicSurface(root, pkg.dir)] as const)),
-    );
+    const surfaces = await Promise.all(config.packages.map((pkg) => nodePublicSurface(root, pkg.dir)));
     const agent = deps.agent ?? createClaudeAgent({ model: opts.model ?? config.model, root });
     const findDeadCode =
       deps.findDeadCode ?? ((pkg) => findNodeDeadCode(root, pkg, { monorepo: config.packages.length > 1 }));

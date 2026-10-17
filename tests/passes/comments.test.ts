@@ -25,7 +25,7 @@ const MATH = [
 interface Options {
   files?: Record<string, string>;
   untracked?: Record<string, string>;
-  surfaces?: [string, PublicSurface][];
+  surfaces?: PublicSurface[];
   inScope?: (file: string) => boolean;
 }
 
@@ -49,7 +49,7 @@ async function run(rewrite: (source: string) => string, opts: Options = {}) {
     agent,
     log: newRunLog(),
     scope: { includes: opts.inScope ?? (() => true) },
-    surfaces: new Map(opts.surfaces),
+    surfaces: opts.surfaces ?? [],
     verify: async (change, apply, proof) => {
       changes.push(change);
       await apply();
@@ -102,7 +102,7 @@ test.each([
 
 test('JSDoc is protected only in a library public surface file', async () => {
   const dropDoc = (s: string) => s.replace('/** Adds two numbers. */\n', '');
-  const surface = (isLibrary: boolean): [string, PublicSurface][] => [['.', { isLibrary, files: ['src/math.ts'] }]];
+  const surface = (isLibrary: boolean): PublicSurface[] => [{ isLibrary, files: ['src/math.ts'] }];
   expect((await run(dropDoc, { surfaces: surface(false) })).proofs).toEqual([{ ok: true }]);
   expect((await run(dropDoc, { surfaces: surface(true) })).proofs).toEqual([
     { ok: false, reason: 'removed a protected comment: /** Adds two numbers. */' },

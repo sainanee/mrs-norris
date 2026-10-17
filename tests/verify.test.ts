@@ -159,7 +159,6 @@ test.each([
 test.each([
   ['.', ['t1', 't2'], 't2'],
   ['packages/a', ['packages/a/x.test.ts > t2'], 'packages/a/x.test.ts > t2'],
-  ['./packages/a/', ['packages/a/x.test.ts > t2'], 'packages/a/x.test.ts > t2'],
 ])('in package %s, a baseline test vanishing beside a flaky failure is rolled back', async (dir, baselinePassing, missing) => {
   const runTests = stubRun(false, [result('flaky', 'failed'), result('t1', 'passed')]);
   const { ctx, write, read } = await setup({

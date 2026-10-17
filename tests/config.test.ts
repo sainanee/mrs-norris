@@ -31,6 +31,17 @@ describe('config', () => {
     expect(await fs.readFile(path.join(root, '.mrs-norris/.gitignore'), 'utf8')).toBe('reports/\nstate.json\n');
   });
 
+  test.each([
+    ['./packages/a/', 'packages/a'],
+    ['packages//a', 'packages/a'],
+    ['./', '.'],
+    ['.', '.'],
+  ])('package dir %s loads as %s', async (dir, normalized) => {
+    const root = await makeTempRepo({ 'a.txt': 'x' });
+    await saveConfig(root, defaultConfig([{ ...pkg, dir }]));
+    expect((await loadConfig(root))?.packages[0]?.dir).toBe(normalized);
+  });
+
   test('a config without packages is invalid', async () => {
     const root = await makeTempRepo({ 'a.txt': 'x' });
     await saveConfig(root, defaultConfig([]));

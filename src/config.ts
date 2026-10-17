@@ -26,7 +26,8 @@ export const CONFIG_PATH = `${CONFIG_DIR}/config.yaml`;
 
 const PackageSchema = z.object({
   name: z.string(),
-  dir: z.string(),
+  // Repo-relative, so callers can match it against paths by prefix: './pkg/' becomes 'pkg'.
+  dir: z.string().transform((dir) => path.posix.normalize(dir).replace(/\/$/, '')),
   language: z.enum(['typescript', 'javascript']),
   runner: z.enum(['jest', 'vitest', 'mocha']).nullable(),
   packageManager: z.enum(['npm', 'pnpm', 'yarn']),
