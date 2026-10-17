@@ -37,6 +37,10 @@ export class Git {
     await this.run(['checkout', ref]);
   }
 
+  async deleteBranch(name: string): Promise<void> {
+    await this.run(['branch', '-D', name]);
+  }
+
   async changedFiles(): Promise<string[]> {
     const out = await this.run(['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all']);
     return out.split('\0').filter(Boolean).map((entry) => entry.slice(3));
