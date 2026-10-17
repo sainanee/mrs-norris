@@ -24,9 +24,6 @@ const pkg = (dir: string): PackageConfig => ({
   commands: { test: 'node check.js' },
 });
 
-// Each run spawns dozens of git and test processes; under a full parallel suite that can exceed 5s.
-vi.setConfig({ testTimeout: 20_000 });
-
 const signalListeners = () => process.listenerCount('SIGINT') + process.listenerCount('SIGTERM');
 const listenersAtStart = signalListeners();
 
