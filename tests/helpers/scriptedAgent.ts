@@ -24,6 +24,8 @@ export class ScriptedAgent implements Agent {
     await this.handlers.edit(prompt, opts);
   }
 
+  abort(): void {}
+
   usage(): Usage {
     const calls = this.prompts.length;
     return { inputTokens: 10 * calls, outputTokens: 5 * calls, costUsd: 0.01 * calls };

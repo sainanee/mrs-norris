@@ -40,6 +40,7 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
   const root = path.resolve(opts.root);
   const realRoot = realPath(root)!;
   const total: Usage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  const running = new Set<AbortController>();
 
   const real = (file: string) => realPath(path.resolve(root, file));
   const inRepo = (file: unknown) => {
@@ -87,36 +88,43 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
           };
     };
 
-    const messages = query({
-      prompt,
-      options: {
-        model: opts.model,
-        cwd: root,
-        // An omitted systemPrompt is sent as empty, and the claude_code preset pulls in auto-memory
-        // and the user's environment, so give the model the repo root it needs for absolute paths.
-        systemPrompt: `You are mrs-norris's code-cleanup assistant, working in the repository at ${root}. Always use absolute paths under ${root}. Never read or write anything outside it.`,
-        tools,
-        permissionMode: 'default',
-        canUseTool,
-        hooks: { PreToolUse: [{ hooks: [guard] }] },
-        // We run in other people's repos: ignore their (and our user's) settings, hooks, CLAUDE.md and MCP servers.
-        settingSources: [],
-        strictMcpConfig: true,
-        persistSession: false,
-      },
-    });
-    for await (const message of messages) {
-      if (message.type !== 'result') continue;
-      for (const usage of Object.values(message.modelUsage)) {
-        total.inputTokens += usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
-        total.outputTokens += usage.outputTokens;
+    const abortController = new AbortController();
+    running.add(abortController);
+    try {
+      const messages = query({
+        prompt,
+        options: {
+          model: opts.model,
+          abortController,
+          cwd: root,
+          // An omitted systemPrompt is sent as empty, and the claude_code preset pulls in auto-memory
+          // and the user's environment, so give the model the repo root it needs for absolute paths.
+          systemPrompt: `You are mrs-norris's code-cleanup assistant, working in the repository at ${root}. Always use absolute paths under ${root}. Never read or write anything outside it.`,
+          tools,
+          permissionMode: 'default',
+          canUseTool,
+          hooks: { PreToolUse: [{ hooks: [guard] }] },
+          // We run in other people's repos: ignore their (and our user's) settings, hooks, CLAUDE.md and MCP servers.
+          settingSources: [],
+          strictMcpConfig: true,
+          persistSession: false,
+        },
+      });
+      for await (const message of messages) {
+        if (message.type !== 'result') continue;
+        for (const usage of Object.values(message.modelUsage)) {
+          total.inputTokens += usage.inputTokens + usage.cacheReadInputTokens + usage.cacheCreationInputTokens;
+          total.outputTokens += usage.outputTokens;
+        }
+        total.costUsd += message.total_cost_usd;
+        if (message.subtype !== 'success') throw new Error(`Claude stopped (${message.subtype}): ${message.errors.join('; ')}`);
+        if (message.is_error) throw new Error(`Claude failed: ${message.result}`);
+        return message.result;
       }
-      total.costUsd += message.total_cost_usd;
-      if (message.subtype !== 'success') throw new Error(`Claude stopped (${message.subtype}): ${message.errors.join('; ')}`);
-      if (message.is_error) throw new Error(`Claude failed: ${message.result}`);
-      return message.result;
+      throw new Error('Claude ended without a result');
+    } finally {
+      running.delete(abortController);
     }
-    throw new Error('Claude ended without a result');
   }
 
   return {
@@ -136,6 +144,9 @@ export function createClaudeAgent(opts: { model: string; root: string }): Agent 
         [...READ_TOOLS, ...WRITE_TOOLS],
         allowedPaths,
       );
+    },
+    abort: () => {
+      for (const controller of running) controller.abort();
     },
     usage: () => ({ ...total }),
   };

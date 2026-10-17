@@ -168,6 +168,18 @@ test.each([
   expect(printed).toContain(message);
 });
 
+test('cleanup stops the agent before touching git', async () => {
+  const { root, run } = await setup();
+  const agent = trimmer(root);
+  const branchAtAbort: string[] = [];
+  vi.spyOn(agent, 'abort').mockImplementation(() => {
+    branchAtAbort.push(execFileSync('git', ['branch', '--show-current'], { cwd: root, encoding: 'utf8' }).trim());
+  });
+  const findDeadCode = () => Promise.reject(new Error('knip failed'));
+  await expect(run({ only: ['dead-code'] }, { agent, findDeadCode })).rejects.toThrow('knip failed');
+  expect(branchAtAbort).toEqual([BRANCH]);
+});
+
 test.each([
   { signal: 'SIGINT', code: 130, after: 'reject' },
   { signal: 'SIGINT', code: 130, after: 'resolve' },

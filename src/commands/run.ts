@@ -154,6 +154,7 @@ export async function runMrsNorris(
       return false;
     };
     cleanup = async () => {
+      agent.abort();
       killLiveChildren();
       // Waits for a git command already running, so a change in flight can't race the reset.
       await git.close();

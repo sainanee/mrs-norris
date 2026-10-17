@@ -123,6 +123,20 @@ describe('edit', () => {
     expect(await read('own.ts')).toEqual({});
   });
 
+  test('abort stops a running session', async () => {
+    mockedQuery.mockImplementationOnce(
+      ({ options }) =>
+        (async function* () {
+          await new Promise((resolve) => options!.abortController!.signal.addEventListener('abort', resolve));
+          throw new Error('session aborted');
+        })() as unknown as Query,
+    );
+    const agent = createClaudeAgent({ model: 'm', root });
+    const editing = agent.edit('x', { allowedPaths: [] });
+    agent.abort();
+    await expect(editing).rejects.toThrow('session aborted');
+  });
+
   test('throws when the run ends in an error', async () => {
     replyWith({ subtype: 'error_max_turns', is_error: true, errors: ['too many turns'] });
     await expect(createClaudeAgent({ model: 'm', root }).edit('x', { allowedPaths: [] })).rejects.toThrow(
