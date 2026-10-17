@@ -12,8 +12,8 @@ export async function runCommentPass(ctx: PassContext): Promise<void> {
   const files = (await ctx.git.trackedFiles()).filter((file) => isSourceFile(file) && isEditable(ctx, file));
   for (const file of files) {
     const before = await fs.readFile(path.join(ctx.root, file), 'utf8');
-    if (listComments(before, file).length === 0) continue;
     const kept = protectedComments(before, file, { publicSurface: isPublicFile(ctx, file) });
+    if (listComments(before, file).length === kept.length) continue;
     const proof = async (): Promise<ProofResult> => {
       const after = await fs.readFile(path.join(ctx.root, file), 'utf8');
       if (!codeTokensEqual(before, after, file)) return { ok: false, reason: 'code changed, not just comments' };
