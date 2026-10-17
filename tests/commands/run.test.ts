@@ -75,16 +75,23 @@ test('parseOnly accepts known categories and lists the valid ones otherwise', ()
   );
 });
 
+const dirty = (files: string) =>
+  `Working tree has uncommitted changes: ${files}. Untracked files count too. Commit them, or stash them with \`git stash -u\`, then run mrs-norris again.`;
+
 test.each([
   { file: 'src/a.ts', edit: 'dirty\n' },
   { file: '.mrs-norris/config.yaml', edit: stringify({ ...defaultConfig([pkg('.')]), model: 'edited' }) },
 ])('a locally edited tracked $file stops the run and keeps the edit', async ({ file, edit }) => {
   const { root, run } = await setup({ commitConfig: true });
   await fs.writeFile(path.join(root, file), edit);
-  await expect(run()).rejects.toThrow(
-    'Working tree has uncommitted changes. Commit or stash them, then run mrs-norris again.',
-  );
+  await expect(run()).rejects.toThrow(dirty(file));
   expect(await fs.readFile(path.join(root, file), 'utf8')).toBe(edit);
+});
+
+test('the dirty-tree error names at most five paths, untracked ones included', async () => {
+  const { root, run } = await setup();
+  for (const n of [1, 2, 3, 4, 5, 6, 7]) await fs.writeFile(path.join(root, `new${n}.txt`), '');
+  await expect(run()).rejects.toThrow(dirty('new1.txt, new2.txt, new3.txt, new4.txt, new5.txt and 2 more'));
 });
 
 test('a failing baseline prints its problems and creates no branch', async () => {

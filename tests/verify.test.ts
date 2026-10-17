@@ -57,7 +57,7 @@ test('a valid edit is committed with the change-id trailer', async () => {
   const { stdout } = await execa('git', ['log', '-1', '--format=%B'], { cwd: root });
   expect(stdout.trimEnd()).toBe(`mrs-norris(comments): T\n\nR\n\nMrs-Norris-Change-Id: ${change().id}`);
   expect(record.commit).toBe(await ctx.git.head());
-  expect(await ctx.git.isClean()).toBe(true);
+  expect(await ctx.git.changedFiles()).toEqual([]);
   expect(ctx.log.changes).toEqual([record]);
 });
 
@@ -87,7 +87,7 @@ test('a check that modifies files is rolled back', async () => {
   const record = await applyAndVerify(ctx, change(), () => write('src/a.ts', 'export const a = 2;\n'));
   expect(record).toMatchObject({ status: 'rolled-back', detail: 'a check modified files: src/a.ts' });
   expect(await read('src/a.ts')).toBe(ORIGINAL);
-  expect(await ctx.git.isClean()).toBe(true);
+  expect(await ctx.git.changedFiles()).toEqual([]);
 });
 
 test.each([
@@ -102,7 +102,7 @@ test.each([
   const record = await applyAndVerify(ctx, change(), apply, proof);
   expect(record).toMatchObject({ status: 'rolled-back', detail: 'error: network down' });
   expect(await read('src/a.ts')).toBe(ORIGINAL);
-  expect(await ctx.git.isClean()).toBe(true);
+  expect(await ctx.git.changedFiles()).toEqual([]);
 });
 
 test.each([

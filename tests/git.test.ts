@@ -11,13 +11,6 @@ async function setup(files: Record<string, string> = { 'a.txt': 'a\n' }) {
 }
 
 describe('Git', () => {
-  test('isClean is true on a fresh repo and false after editing a tracked file', async () => {
-    const { root, git } = await setup();
-    expect(await git.isClean()).toBe(true);
-    await fs.writeFile(path.join(root, 'a.txt'), 'changed\n');
-    expect(await git.isClean()).toBe(false);
-  });
-
   test.each([
     { config: 'untracked', files: {}, expected: ['b.txt'] },
     { config: 'tracked and edited', files: { '.mrs-norris/config.yaml': 'model: a\n' }, expected: ['.mrs-norris/config.yaml', 'b.txt'] },
@@ -99,7 +92,7 @@ describe('Git', () => {
     await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
     await git.stage();
     expect(await git.commit('change')).toBe(await git.head());
-    expect(await git.isClean()).toBe(true);
+    expect(await git.changedFiles()).toEqual([]);
     expect((await execa('git', ['log', '-1', '--format=%s'], { cwd: root })).stdout).toBe('change');
   });
 

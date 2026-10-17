@@ -40,10 +40,6 @@ export class Git {
     return exitCode === 0 ? stdout : null;
   }
 
-  async isClean(): Promise<boolean> {
-    return (await this.changedFiles()).length === 0;
-  }
-
   async currentBranch(): Promise<string | null> {
     return (await this.run(['branch', '--show-current'])) || null;
   }

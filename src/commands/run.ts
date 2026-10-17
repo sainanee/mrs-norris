@@ -42,6 +42,7 @@ const PASSES: Partial<Record<Category, (ctx: PassContext) => Promise<void>>> = {
 };
 
 const SIGNAL_EXIT_CODES = { SIGINT: 130, SIGTERM: 143 } as const;
+const DIRTY_PATHS = 5;
 
 export function parseOnly(value: string): Category[] {
   return value.split(',').map((name) => {
@@ -104,8 +105,12 @@ export async function runMrsNorris(
     if (toplevel === null) throw new Error(`Not a git repository: ${root}`);
     if (toplevel !== (await fs.realpath(root))) throw new Error(`Run mrs-norris from the repository root: ${toplevel}`);
     const config = (await loadConfig(root)) ?? (await initProject(root, io, { yes: opts.yes ?? false }));
-    if (!(await git.isClean())) {
-      throw new Error('Working tree has uncommitted changes. Commit or stash them, then run mrs-norris again.');
+    const changed = await git.changedFiles();
+    if (changed.length > 0) {
+      const more = changed.length > DIRTY_PATHS ? ` and ${changed.length - DIRTY_PATHS} more` : '';
+      throw new Error(
+        `Working tree has uncommitted changes: ${changed.slice(0, DIRTY_PATHS).join(', ')}${more}. Untracked files count too. Commit them, or stash them with \`git stash -u\`, then run mrs-norris again.`,
+      );
     }
     io.print("Don't edit files or switch branches in this checkout until mrs-norris finishes.");
     const categories = CATEGORIES.filter((c) => config.categories.includes(c) && (opts.only ?? CATEGORIES).includes(c));
