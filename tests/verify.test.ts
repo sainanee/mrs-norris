@@ -166,6 +166,22 @@ test.each([
   expect(await read('src/a.ts')).toBe(ORIGINAL);
 });
 
+test('a duplicate id whose twin fails is rolled back when the id was never flaky', async () => {
+  const runTests = stubRun(false, [result('flaky', 'failed'), result('t1', 'passed'), result('t1', 'failed')]);
+  const { ctx, write, read } = await setup({ runTests, flaky: new Set(['flaky']), baselinePassing: new Set(['t1']) });
+  const record = await applyAndVerify(ctx, change(), () => write('src/a.ts', 'export const a = 2;\n'));
+  expect(record).toMatchObject({ status: 'rolled-back', detail: 'tests failed in .: t1' });
+  expect(await read('src/a.ts')).toBe(ORIGINAL);
+});
+
+test('a baseline test vanishing from a green run is rolled back', async () => {
+  const runTests = stubRun(true, [result('t1', 'passed')]);
+  const { ctx, write, read } = await setup({ runTests, baselinePassing: new Set(['t1', 't2']) });
+  const record = await applyAndVerify(ctx, change(), () => write('src/a.ts', 'export const a = 2;\n'));
+  expect(record).toMatchObject({ status: 'rolled-back', detail: 'tests failed in .: missing t2' });
+  expect(await read('src/a.ts')).toBe(ORIGINAL);
+});
+
 test('a non-zero test exit with no failed test is rolled back', async () => {
   const runTests = stubRun(false, [result('t1', 'passed')]);
   const { ctx, write, read } = await setup({ runTests, baselinePassing: new Set(['t1']) });

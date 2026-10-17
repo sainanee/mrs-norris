@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { runCommand } from './exec.js';
 import type { Git } from './git.js';
-import { runTests } from './runTests.js';
+import { runTests, statusById } from './runTests.js';
 import type { ChangeRecord, PackageConfig, PlannedChange, ProofResult, RunLog, TestRun } from './types.js';
 
 const DETAIL_IDS = 5;
@@ -74,19 +74,18 @@ async function firstFailure(ctx: VerifyContext): Promise<string | undefined> {
 }
 
 // A non-zero exit is accepted only when flaky failures fully explain it. A load error outside
-// any test fails no id, and a suite that fails to load drops its tests from the report, so at
-// least one test must have failed and every baseline-passing test must still pass.
+// any test fails no id, and a suite that fails to load drops its tests from the report, so even
+// a green run must still pass every baseline-passing test.
 function testProblem(run: TestRun, pkg: PackageConfig, ctx: VerifyContext): string | undefined {
-  if (run.ok) return;
-  const failed = run.results.filter((r) => r.status === 'failed').map((r) => r.id);
-  if (failed.length === 0) return lastLines(run.output);
+  const statuses = statusById(run.results);
+  const failed = [...statuses.keys()].filter((id) => statuses.get(id) === 'failed');
+  if (!run.ok && failed.length === 0) return lastLines(run.output);
   const unexplained = failed.filter((id) => !ctx.flaky.has(id));
   if (unexplained.length > 0) return unexplained.slice(0, DETAIL_IDS).join(', ');
-  const passed = new Set(run.results.filter((r) => r.status === 'passed').map((r) => r.id));
   // Ids are repo-relative, so another package's baseline tests are never in this run.
   const dir = path.posix.normalize(pkg.dir).replace(/\/$/, '');
   const inPackage = (id: string) => dir === '.' || id.startsWith(`${dir}/`);
-  const missing = [...ctx.baselinePassing].filter((id) => inPackage(id) && !passed.has(id));
+  const missing = [...ctx.baselinePassing].filter((id) => inPackage(id) && statuses.get(id) !== 'passed');
   if (missing.length > 0) return `missing ${missing.slice(0, DETAIL_IDS).join(', ')}`;
 }
 

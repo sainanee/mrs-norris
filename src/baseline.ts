@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { runCommand } from './exec.js';
-import { runTests } from './runTests.js';
+import { runTests, statusById } from './runTests.js';
 import type { PackageConfig, TestResult } from './types.js';
 
 export interface Baseline {
@@ -30,7 +30,9 @@ export async function runBaseline(
   const cmd = pkg.commands.test;
 
   const statuses = new Map<string, TestResult['status'][]>();
-  for (const { id, status } of runs.flatMap((r) => r.results)) statuses.set(id, [...(statuses.get(id) ?? []), status]);
+  for (const run of runs) {
+    for (const [id, status] of statusById(run.results)) statuses.set(id, [...(statuses.get(id) ?? []), status]);
+  }
   const idsWhere = (keep: (s: TestResult['status'][]) => boolean) => [...statuses].filter(([, s]) => keep(s)).map(([id]) => id);
   const failing = idsWhere((s) => s.every((x) => x === 'failed'));
   const flaky = idsWhere((s) => new Set(s).size > 1);

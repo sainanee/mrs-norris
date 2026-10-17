@@ -3,9 +3,21 @@ import os from 'node:os';
 import path from 'node:path';
 import { appendArgs, parseTestReport, reporterArgs } from './adapters/node/testReport.js';
 import { runCommand } from './exec.js';
-import type { PackageConfig, TestRun } from './types.js';
+import type { PackageConfig, TestResult, TestRun } from './types.js';
 
 const OUTPUT_LINES = 200;
+
+const RANK: Record<TestResult['status'], number> = { skipped: 0, passed: 1, failed: 2 };
+
+/** One status per test id. Tests can share an id (test.each without a %s), and a failure in any of them wins. */
+export function statusById(results: TestResult[]): Map<string, TestResult['status']> {
+  const statuses = new Map<string, TestResult['status']>();
+  for (const { id, status } of results) {
+    const seen = statuses.get(id);
+    if (seen === undefined || RANK[status] > RANK[seen]) statuses.set(id, status);
+  }
+  return statuses;
+}
 
 export async function runTests(root: string, pkg: PackageConfig): Promise<TestRun> {
   const cwd = path.join(root, pkg.dir);

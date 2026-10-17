@@ -56,6 +56,12 @@ test('a test failing in every run is failing', async () => {
   expect(b).toMatchObject({ ok: false, failing: ['t1'], flaky: [], passing: ['t2'], problems: [] });
 });
 
+test('a duplicate id whose twin fails in every run is failing, not flaky', async () => {
+  const twins = () => run([result('t1', 'failed'), result('t1', 'passed')]);
+  const b = await baseline([twins(), twins()]);
+  expect(b).toMatchObject({ ok: false, failing: ['t1'], flaky: [], passing: [] });
+});
+
 test('a non-zero exit with only passed results means a suite failed to load', async () => {
   const b = await baseline([run([result('t1', 'passed')], { ok: false }), run([result('t1', 'passed')], { ok: false })]);
   expect(b.ok).toBe(false);
