@@ -104,6 +104,15 @@ describe('Git', () => {
     await expect(git.grepWord('x')).rejects.toThrow('git grep failed');
   });
 
+  test('close waits for a running command and rejects every later one', async () => {
+    const { git } = await setup();
+    const running = git.head();
+    await git.close();
+    expect(await running).toMatch(/^[0-9a-f]{40}$/);
+    await expect(git.head()).rejects.toThrow('Aborted');
+    await expect(git.grepWord('a')).rejects.toThrow('Aborted');
+  });
+
   test('currentBranch is null on a detached HEAD', async () => {
     const { root, git } = await setup();
     expect(await git.currentBranch()).toBe('main');

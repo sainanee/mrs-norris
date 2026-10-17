@@ -1,4 +1,5 @@
 import { execa } from 'execa';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseOnly, runMrsNorris, type RunDeps, type RunOptions } from '../../src/commands/run.js';
@@ -12,6 +13,7 @@ const A = '// returns one\nexport const one = 1;\n';
 const CHECK = "import { readFileSync } from 'node:fs';\nprocess.exit(readFileSync('src/a.ts', 'utf8').includes('export const one = 1;') ? 0 : 1);\n";
 const NOW = new Date(2026, 9, 16, 14, 32);
 const BRANCH = 'mrs-norris/2026-10-16-1432';
+const TMP = path.resolve(import.meta.dirname, '../../.tmp');
 
 const pkg = (dir: string): PackageConfig => ({
   name: dir,
@@ -21,6 +23,9 @@ const pkg = (dir: string): PackageConfig => ({
   packageManager: 'npm',
   commands: { test: 'node check.js' },
 });
+
+// Each run spawns dozens of git and test processes; under a full parallel suite that can exceed 5s.
+vi.setConfig({ testTimeout: 20_000 });
 
 const signalListeners = () => process.listenerCount('SIGINT') + process.listenerCount('SIGTERM');
 const listenersAtStart = signalListeners();
@@ -54,7 +59,7 @@ async function setup({ files = {}, packages = [pkg('.')], commitConfig = false }
   const run = (opts: Partial<RunOptions> = {}, deps: Partial<RunDeps> = {}) =>
     runMrsNorris(root, { paths: [], ...opts }, { io, agent: trimmer(root), now: () => NOW, findDeadCode: async () => [], ...deps });
   const branches = async () => (await git('branch', '--list', 'mrs-norris/*', '--format=%(refname:short)')).split('\n').filter(Boolean);
-  return { root, git, printed, run, branches, head: await git('rev-parse', 'HEAD') };
+  return { root, git, io, printed, run, branches, head: await git('rev-parse', 'HEAD') };
 }
 
 const trimmer = (root: string) =>
@@ -162,25 +167,100 @@ test.each([
 });
 
 test.each([
-  ['SIGINT', 130],
-  ['SIGTERM', 143],
-] as const)('%s rolls back, returns to the original branch, then exits with %i', async (signal, code) => {
-  const { root, git, run, branches } = await setup();
+  { signal: 'SIGINT', code: 130, after: 'reject' },
+  { signal: 'SIGINT', code: 130, after: 'resolve' },
+  { signal: 'SIGTERM', code: 143, after: 'hang' },
+] as const)('$signal mid-edit, then the edit settles with $after: abort once, leave no commit, exit $code', async ({ signal, code, after }) => {
+  const { root, git, run, branches, head } = await setup();
   const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+  const trim = trimmer(root);
   const agent = new ScriptedAgent({
-    edit: async () => {
-      await fs.writeFile(path.join(root, 'src/a.ts'), 'BROKEN\n');
+    edit: async (prompt, opts) => {
+      await trim.edit(prompt, opts);
       process.emit(signal, signal);
-      await new Promise(() => {});
+      if (after === 'reject') throw new Error('claude interrupted');
+      if (after === 'hang') await new Promise(() => {});
     },
   });
-  void run({ only: ['comments'] }, { agent });
+  const outcome = run({ only: ['comments'] }, { agent }).then(
+    () => 'resolved',
+    (error: Error) => error.message,
+  );
 
   await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(code), { timeout: 10_000 });
+  if (after !== 'hang') expect(await outcome).toBe('Aborted');
+  expect(exit).toHaveBeenCalledTimes(1);
   expect(await git('branch', '--show-current')).toBe('main');
+  expect(await git('rev-parse', 'HEAD')).toBe(head);
   expect(await fs.readFile(path.join(root, 'src/a.ts'), 'utf8')).toBe(A);
   expect(await branches()).toEqual([]);
   expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
+});
+
+test('after a signal no further change is attempted', async () => {
+  const { git, run, head } = await setup({ files: { 'src/b.ts': 'export const unusedThing = 2;\n' } });
+  vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+  const edit = vi.fn(async () => {});
+  const agent = new ScriptedAgent({
+    judge: () => {
+      process.emit('SIGINT', 'SIGINT');
+      return { unused: true, confidence: 'high', reason: 'never imported' };
+    },
+    edit,
+  });
+  const candidate: DeadCodeCandidate = { kind: 'export', pkgDir: '.', file: 'src/b.ts', symbol: 'unusedThing' };
+  await expect(run({ only: ['dead-code'] }, { agent, findDeadCode: async () => [candidate] })).rejects.toThrow('Aborted');
+  expect(edit).not.toHaveBeenCalled();
+  expect(await git('rev-parse', 'HEAD')).toBe(head);
+});
+
+test('a signal before the branch exists only exits', async () => {
+  const { root, run } = await setup({ files: { 'check.js': 'setTimeout(() => {}, 600);\n' } });
+  const state: string[] = [];
+  vi.spyOn(process, 'exit').mockImplementation(((code: number) => {
+    const branches = execFileSync('git', ['branch', '--format=%(refname:short)'], { cwd: root, encoding: 'utf8' });
+    state.push(`${code} ${branches.trim()}`);
+  }) as never);
+  setTimeout(() => process.emit('SIGINT', 'SIGINT'), 200);
+  await run({ only: ['dead-code'] });
+  expect(state).toEqual(['130 main']);
+});
+
+test.each([
+  { where: 'a subdirectory', dir: (root: string) => path.join(root, 'src'), message: async (root: string) => `Run mrs-norris from the repository root: ${await fs.realpath(root)}` },
+  { where: 'a directory outside any repository', dir: () => fs.mkdtemp(path.join(TMP, 'plain-')), message: async (_: string, dir: string) => `Not a git repository: ${dir}` },
+])('running from $where is refused', async ({ dir, message }) => {
+  const { root, io } = await setup();
+  const target = await dir(root);
+  await expect(runMrsNorris(target, { paths: [] }, { io, agent: trimmer(root) })).rejects.toThrow(
+    await message(root, target),
+  );
+});
+
+test('a test command that changes files at baseline stops the run before branching', async () => {
+  const { run, branches } = await setup({
+    files: { 'check.js': "import { writeFileSync } from 'node:fs';\nwriteFileSync('stray.txt', '');\n" },
+  });
+  await expect(run()).rejects.toThrow(
+    'Your test command changed files in the repo (stray.txt). mrs-norris needs a test run that leaves the tree clean.',
+  );
+  expect(await branches()).toEqual([]);
+});
+
+test("files the final test run changes reach neither branch", async () => {
+  // The third run is the final one: two baseline runs come first and no change is verified.
+  const check = [
+    "import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';",
+    "let runs = 0;",
+    "try { runs = Number(readFileSync('.git/check-runs', 'utf8')); } catch {}",
+    "writeFileSync('.git/check-runs', String(runs + 1));",
+    "if (runs === 2) appendFileSync('src/a.ts', 'export const stray = 1;\\n');",
+  ].join('\n');
+  const { git, run, head } = await setup({ files: { 'check.js': check } });
+  const { branch } = await run({ only: ['dead-code'] });
+  expect(await git('rev-parse', 'HEAD')).toBe(head);
+  expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
+  expect(await git('show', `${branch}:src/a.ts`)).toBe(A.trimEnd());
 });
 
 test('runs started in the same minute get distinct branches', async () => {

@@ -12,10 +12,12 @@ export interface CommandResult {
 
 const livePids = new Set<number>();
 
-// Detached children no longer die with us, so kill their groups when the process exits.
-process.on('exit', () => {
+export function killLiveChildren(): void {
   for (const pid of livePids) killGroup(pid);
-});
+}
+
+// Detached children no longer die with us, so kill their groups when the process exits.
+process.on('exit', killLiveChildren);
 
 function killGroup(pid: number): boolean {
   try {

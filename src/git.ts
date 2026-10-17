@@ -1,14 +1,37 @@
 import { execa } from 'execa';
 
 export class Git {
+  private closed = false;
+  private readonly running = new Set<Promise<unknown>>();
+
   constructor(private readonly root: string) {}
 
+  private exec(args: string[], reject = true) {
+    if (this.closed) return Promise.reject(new Error('Aborted'));
+    const call = execa('git', args, { cwd: this.root, reject });
+    const done = () => this.running.delete(call);
+    this.running.add(call);
+    void call.then(done, done);
+    return call;
+  }
+
   private async run(args: string[]): Promise<string> {
-    return (await execa('git', args, { cwd: this.root })).stdout;
+    return (await this.exec(args)).stdout;
   }
 
   private async succeeds(args: string[]): Promise<boolean> {
-    return (await execa('git', args, { cwd: this.root, reject: false })).exitCode === 0;
+    return (await this.exec(args, false)).exitCode === 0;
+  }
+
+  /** Rejects every later command and resolves once the commands already running have finished. */
+  async close(): Promise<void> {
+    this.closed = true;
+    await Promise.allSettled(this.running);
+  }
+
+  async toplevel(): Promise<string | null> {
+    const { stdout, exitCode } = await this.exec(['rev-parse', '--show-toplevel'], false);
+    return exitCode === 0 ? stdout : null;
   }
 
   async isClean(ignorePrefixes = ['.mrs-norris/']): Promise<boolean> {
@@ -41,6 +64,10 @@ export class Git {
     await this.run(['branch', '-D', name]);
   }
 
+  async subjects(range: string): Promise<string[]> {
+    return lines(await this.run(['log', '--format=%s', range]));
+  }
+
   async changedFiles(): Promise<string[]> {
     const out = await this.run(['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all']);
     return out.split('\0').filter(Boolean).map((entry) => entry.slice(3));
@@ -63,10 +90,7 @@ export class Git {
   }
 
   async grepWord(term: string): Promise<{ file: string; line: number }[]> {
-    const { stdout, exitCode } = await execa('git', ['grep', '-n', '-I', '-F', '-w', '-e', term], {
-      cwd: this.root,
-      reject: false,
-    });
+    const { stdout, exitCode } = await this.exec(['grep', '-n', '-I', '-F', '-w', '-e', term], false);
     if (exitCode !== 0 && exitCode !== 1) throw new Error(`git grep failed with exit code ${exitCode}`);
     return lines(stdout).map((hit) => {
       const [, file, line] = /^(.+?):(\d+):/.exec(hit)!;

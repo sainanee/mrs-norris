@@ -1,7 +1,7 @@
 import { execa } from 'execa';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { runCommand } from '../src/exec.js';
+import { killLiveChildren, runCommand } from '../src/exec.js';
 
 describe('runCommand', () => {
   test('captures output and exit code without throwing on failure', async () => {
@@ -19,6 +19,15 @@ describe('runCommand', () => {
     const result = await runCommand('sleep 5; echo x', { cwd: process.cwd(), timeoutMs: 200 });
     expect(result.timedOut).toBe(true);
     expect(result.durationMs).toBeLessThan(2000);
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  test('killLiveChildren kills running commands, including their children', async () => {
+    const running = runCommand('sleep 5; echo x', { cwd: process.cwd() });
+    killLiveChildren();
+    const result = await running;
+    expect(result.durationMs).toBeLessThan(2000);
+    expect(result.stdout).toBe('');
     expect(result.exitCode).not.toBe(0);
   });
 });
