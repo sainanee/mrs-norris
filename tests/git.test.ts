@@ -74,26 +74,31 @@ describe('Git', () => {
     expect((await git.changedFiles()).sort()).toEqual(['new.txt', 'old.txt']);
   });
 
-  test('commitAll commits everything but .mrs-norris/ and returns the new head sha', async () => {
+  test('stage takes everything but .mrs-norris/, and commit records only what was staged', async () => {
     const { root, git } = await setup();
     await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
     await fs.mkdir(path.join(root, '.mrs-norris'));
     await fs.writeFile(path.join(root, '.mrs-norris/config.yaml'), 'model: x\n');
-    const sha = await git.commitAll('a\n\nMrs-Norris-Change-Id: mn-1');
+    await git.stage();
+    await fs.writeFile(path.join(root, 'b.txt'), 'later\n');
+    await fs.writeFile(path.join(root, 'c.txt'), 'c\n');
+    expect((await git.unstagedFiles()).sort()).toEqual(['b.txt', 'c.txt']);
+    const sha = await git.commit('a\n\nMrs-Norris-Change-Id: mn-1');
     expect(sha).toBe(await git.head());
     const show = async (...args: string[]) => (await execa('git', args, { cwd: root })).stdout;
     expect(await show('log', '-1', '--format=%B')).toContain('Mrs-Norris-Change-Id: mn-1');
     expect(await show('show', '--format=', '--name-only')).toBe('b.txt');
-    expect(await show('status', '--porcelain')).toBe('?? .mrs-norris/');
+    expect(await show('show', 'HEAD:b.txt')).toBe('b');
   });
 
-  test('commitAll runs no user hook', async () => {
+  test('commit runs no user hook', async () => {
     const { root, git } = await setup();
     const hook = (name: string, body: string) => fs.writeFile(path.join(root, '.git/hooks', name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
     await hook('pre-commit', 'exit 1');
     await hook('prepare-commit-msg', 'echo rewritten > "$1"');
     await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
-    expect(await git.commitAll('change')).toBe(await git.head());
+    await git.stage();
+    expect(await git.commit('change')).toBe(await git.head());
     expect(await git.isClean()).toBe(true);
     expect((await execa('git', ['log', '-1', '--format=%s'], { cwd: root })).stdout).toBe('change');
   });
@@ -139,7 +144,8 @@ describe('Git', () => {
     await fs.writeFile(path.join(root, 'src/b.txt'), 'changed\n');
     await fs.writeFile(path.join(root, 'untracked.txt'), 'u\n');
     expect((await git.trackedFiles()).sort()).toEqual(['a.txt', 'src/b.txt']);
-    await git.commitAll('change');
+    await git.stage();
+    await git.commit('change');
     expect(await git.diffNames(base)).toEqual(['src/b.txt', 'untracked.txt']);
   });
 });

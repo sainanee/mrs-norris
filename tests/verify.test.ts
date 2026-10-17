@@ -82,6 +82,14 @@ test.each([
   expect(await read('src/a.ts')).toBe(ORIGINAL);
 });
 
+test('a check that modifies files is rolled back', async () => {
+  const { ctx, write, read } = await setup({ packages: [pkg('.', { lint: 'echo x >> src/a.ts' })] });
+  const record = await applyAndVerify(ctx, change(), () => write('src/a.ts', 'export const a = 2;\n'));
+  expect(record).toMatchObject({ status: 'rolled-back', detail: 'a check modified files: src/a.ts' });
+  expect(await read('src/a.ts')).toBe(ORIGINAL);
+  expect(await ctx.git.isClean()).toBe(true);
+});
+
 test.each([
   ['apply', () => Promise.reject(new Error('network down')), undefined],
   ['proof', () => Promise.resolve(), () => Promise.reject(new Error('network down'))],

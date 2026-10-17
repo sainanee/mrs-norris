@@ -48,12 +48,16 @@ async function attempt(
     if (files.length === 0) return { ...change, files, status: 'skipped', detail: 'no change produced' };
     const outside = files.filter((file) => !allowedPaths.some((p) => file === p || file.startsWith(`${p}/`)));
     if (outside.length > 0) return await rolledBack(`touched files outside the change: ${outside.join(', ')}`);
+    // Staged now, so the commit holds exactly the content that was proven and checked.
+    await ctx.git.stage();
     const proved = await proof?.();
     if (proved && !proved.ok) return await rolledBack(proved.reason);
     const failure = await firstFailure(ctx);
     if (failure) return await rolledBack(failure);
+    const modified = await ctx.git.unstagedFiles();
+    if (modified.length > 0) return await rolledBack(`a check modified files: ${modified.join(', ')}`);
     const message = `mrs-norris(${change.category}): ${change.title}\n\n${change.reason}\n\nMrs-Norris-Change-Id: ${change.id}`;
-    return { ...change, files, status: 'committed', commit: await ctx.git.commitAll(message) };
+    return { ...change, files, status: 'committed', commit: await ctx.git.commit(message) };
   } catch (error) {
     return rolledBack(`error: ${(error as Error).message}`);
   }

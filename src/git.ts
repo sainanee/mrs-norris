@@ -67,7 +67,7 @@ export class Git {
     await this.run(['checkout', '-b', name]);
   }
 
-  /** From now on, commitAll and rollback throw without touching anything unless `branch` is checked out. */
+  /** From now on, stage, commit and rollback throw without touching anything unless `branch` is checked out. */
   pinTo(branch: string): void {
     this.pinned = branch;
   }
@@ -92,17 +92,28 @@ export class Git {
     return lines(await this.run(['log', '--format=%s', range]));
   }
 
-  async changedFiles(): Promise<string[]> {
+  private async status(): Promise<string[]> {
     const out = await this.run(['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all']);
-    return out
-      .split('\0')
-      .filter((entry) => entry && !entry.startsWith(`?? ${CONFIG_PREFIX}`))
-      .map((entry) => entry.slice(3));
+    return out.split('\0').filter((entry) => entry && !entry.startsWith(`?? ${CONFIG_PREFIX}`));
   }
 
-  async commitAll(message: string): Promise<string> {
+  async changedFiles(): Promise<string[]> {
+    return (await this.status()).map((entry) => entry.slice(3));
+  }
+
+  /** Files whose working copy differs from the index, untracked ones included. */
+  async unstagedFiles(): Promise<string[]> {
+    return (await this.status()).filter((entry) => entry[1] !== ' ').map((entry) => entry.slice(3));
+  }
+
+  async stage(): Promise<void> {
     await this.assertPinned();
     await this.run(['add', '-A', '--', '.', `:(exclude)${CONFIG_PREFIX}`]);
+  }
+
+  /** Commits what is staged. */
+  async commit(message: string): Promise<string> {
+    await this.assertPinned();
     // User hooks could rewrite verified content or the message, reject the mrs-norris(...)
     // subject, or wait on a terminal prompt; --no-verify skips only some of them.
     await this.run(['-c', 'core.hooksPath=/dev/null', 'commit', '-m', message]);
