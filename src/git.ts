@@ -8,6 +8,7 @@ const CONFIG_PREFIX = `${CONFIG_DIR}/`;
 export class Git {
   private closed = false;
   private readonly running = new Set<Promise<unknown>>();
+  private pinned?: string;
 
   constructor(private readonly root: string) {}
 
@@ -51,13 +52,32 @@ export class Git {
     return this.run(['rev-parse', 'HEAD']);
   }
 
-  async createBranch(name: string): Promise<string> {
+  branchExists(name: string): Promise<boolean> {
+    return this.succeeds(['rev-parse', '--verify', '--quiet', `refs/heads/${name}`]);
+  }
+
+  /** `name`, or `name-2`, `name-3`, … if it is taken. */
+  async unusedBranchName(name: string): Promise<string> {
     let candidate = name;
-    for (let n = 2; await this.succeeds(['rev-parse', '--verify', '--quiet', `refs/heads/${candidate}`]); n++) {
-      candidate = `${name}-${n}`;
-    }
-    await this.run(['checkout', '-b', candidate]);
+    for (let n = 2; await this.branchExists(candidate); n++) candidate = `${name}-${n}`;
     return candidate;
+  }
+
+  async createBranch(name: string): Promise<void> {
+    await this.run(['checkout', '-b', name]);
+  }
+
+  /** From now on, commitAll and rollback throw without touching anything unless `branch` is checked out. */
+  pinTo(branch: string): void {
+    this.pinned = branch;
+  }
+
+  private async assertPinned(): Promise<void> {
+    if (this.pinned === undefined) return;
+    const current = await this.currentBranch();
+    if (current !== this.pinned) {
+      throw new Error(`The checkout moved to ${current ?? 'a detached HEAD'} while mrs-norris was running; stopping without touching it.`);
+    }
   }
 
   async checkout(ref: string): Promise<void> {
@@ -81,6 +101,7 @@ export class Git {
   }
 
   async commitAll(message: string): Promise<string> {
+    await this.assertPinned();
     await this.run(['add', '-A', '--', '.', `:(exclude)${CONFIG_PREFIX}`]);
     // User hooks could rewrite verified content or the message, reject the mrs-norris(...)
     // subject, or wait on a terminal prompt; --no-verify skips only some of them.
@@ -89,6 +110,7 @@ export class Git {
   }
 
   async rollback(): Promise<void> {
+    await this.assertPinned();
     await this.run(['reset', '--hard', 'HEAD']);
     await this.run(['clean', '-fd', '-e', `/${CONFIG_PREFIX}`]);
   }

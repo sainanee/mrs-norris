@@ -220,6 +220,27 @@ test('after a signal no further change is attempted, and a second signal exits a
   expect(exits).toEqual([`130 ${BRANCH}`, '130 main']);
 });
 
+test('a branch switch mid-run stops the run without committing to or resetting the new checkout', async () => {
+  const { root, git, run, printed, head } = await setup();
+  await git('branch', 'feature');
+  const trim = trimmer(root);
+  const agent = new ScriptedAgent({
+    edit: async (prompt, opts) => {
+      await trim.edit(prompt, opts);
+      await git('checkout', 'feature');
+      await fs.writeFile(path.join(root, 'notes.txt'), 'mine\n');
+    },
+  });
+  await expect(run({ only: ['comments'] }, { agent })).rejects.toThrow(
+    'The checkout moved to feature while mrs-norris was running; stopping without touching it.',
+  );
+  expect(printed).toContain("Don't edit files or switch branches in this checkout until mrs-norris finishes.");
+  expect(await git('branch', '--show-current')).toBe('feature');
+  expect(await git('rev-parse', 'feature')).toBe(head);
+  expect(await fs.readFile(path.join(root, 'notes.txt'), 'utf8')).toBe('mine\n');
+  expect(await fs.readFile(path.join(root, 'src/a.ts'), 'utf8')).toBe('export const one = 1;\n');
+});
+
 test('a signal before the branch exists only exits', async () => {
   const check = "import { writeFileSync } from 'node:fs';\nwriteFileSync('.git/check-started', '');\nsetTimeout(() => {}, 600);\n";
   const { root, run } = await setup({ files: { 'check.js': check } });

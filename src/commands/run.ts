@@ -107,6 +107,7 @@ export async function runMrsNorris(
     if (!(await git.isClean())) {
       throw new Error('Working tree has uncommitted changes. Commit or stash them, then run mrs-norris again.');
     }
+    io.print("Don't edit files or switch branches in this checkout until mrs-norris finishes.");
     const scope = await makeScope(git, opts.paths, opts.since);
 
     const baselines = [];
@@ -140,6 +141,8 @@ export async function runMrsNorris(
     log.flaky = [...new Set(baselines.flatMap((b) => b.flaky))];
     const original = (await git.currentBranch()) ?? (await git.head());
 
+    const branch = await git.unusedBranchName(branchName(now()));
+
     const returnToOriginal = async (g: Git) => {
       await g.rollback();
       await g.checkout(original);
@@ -149,9 +152,9 @@ export async function runMrsNorris(
       // Waits for a git command already running, so a change in flight can't race the reset.
       await git.close();
       const recovery = new Git(root);
-      const branch = await recovery.currentBranch();
+      if (!(await recovery.branchExists(branch))) return;
+      recovery.pinTo(branch);
       await returnToOriginal(recovery);
-      if (branch === null || branch === original) return;
       if ((await recovery.subjects(`${original}..${branch}`)).length > 0) {
         io.print(`Kept branch ${branch} with the changes committed so far.`);
       } else {
@@ -159,7 +162,8 @@ export async function runMrsNorris(
         io.print(`Deleted branch ${branch}: no changes were committed.`);
       }
     };
-    const branch = await git.createBranch(branchName(now()));
+    await git.createBranch(branch);
+    git.pinTo(branch);
 
     const verifyContext = {
       root,

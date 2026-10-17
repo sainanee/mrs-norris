@@ -15,6 +15,8 @@ npx mrs-norris init     # detect test, typecheck and lint commands; writes .mrs-
 npx mrs-norris          # same as `npx mrs-norris run`
 ```
 
+Don't edit files or switch branches in this checkout until mrs-norris finishes. If the checkout moves to another branch mid-run, mrs-norris stops without committing to it or resetting it.
+
 `run [paths...]` limits the run to the given paths. Options:
 
 | Option | Effect |

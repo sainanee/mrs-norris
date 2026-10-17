@@ -29,12 +29,12 @@ describe('Git', () => {
     expect((await git.changedFiles()).sort()).toEqual(expected);
   });
 
-  test('createBranch suffixes the name when the branch already exists', async () => {
+  test('unusedBranchName suffixes a name once its branch exists', async () => {
     const { git } = await setup();
-    expect(await git.createBranch('mrs-norris/x')).toBe('mrs-norris/x');
-    await git.checkout('main');
-    expect(await git.createBranch('mrs-norris/x')).toBe('mrs-norris/x-2');
-    expect(await git.currentBranch()).toBe('mrs-norris/x-2');
+    expect(await git.unusedBranchName('mrs-norris/x')).toBe('mrs-norris/x');
+    await git.createBranch('mrs-norris/x');
+    expect(await git.currentBranch()).toBe('mrs-norris/x');
+    expect(await git.unusedBranchName('mrs-norris/x')).toBe('mrs-norris/x-2');
   });
 
   test('changedFiles lists modified, deleted and untracked files', async () => {
