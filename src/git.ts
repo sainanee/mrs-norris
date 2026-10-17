@@ -82,8 +82,9 @@ export class Git {
 
   async commitAll(message: string): Promise<string> {
     await this.run(['add', '-A', '--', '.', `:(exclude)${CONFIG_PREFIX}`]);
-    // User hooks could rewrite verified content or reject the mrs-norris(...) subject.
-    await this.run(['commit', '--no-verify', '-m', message]);
+    // User hooks could rewrite verified content or the message, reject the mrs-norris(...)
+    // subject, or wait on a terminal prompt; --no-verify skips only some of them.
+    await this.run(['-c', 'core.hooksPath=/dev/null', 'commit', '-m', message]);
     return this.head();
   }
 

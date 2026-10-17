@@ -87,12 +87,15 @@ describe('Git', () => {
     expect(await show('status', '--porcelain')).toBe('?? .mrs-norris/');
   });
 
-  test('commitAll skips user hooks', async () => {
+  test('commitAll runs no user hook', async () => {
     const { root, git } = await setup();
-    await fs.writeFile(path.join(root, '.git/hooks/pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    const hook = (name: string, body: string) => fs.writeFile(path.join(root, '.git/hooks', name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    await hook('pre-commit', 'exit 1');
+    await hook('prepare-commit-msg', 'echo rewritten > "$1"');
     await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
     expect(await git.commitAll('change')).toBe(await git.head());
     expect(await git.isClean()).toBe(true);
+    expect((await execa('git', ['log', '-1', '--format=%s'], { cwd: root })).stdout).toBe('change');
   });
 
   test.each([
