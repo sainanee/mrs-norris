@@ -16,6 +16,9 @@ export const VerdictSchema = z.object({
   reason: z.string(),
 });
 
+// Removing such a declaration would also remove behavior, e.g. `export const db = connect()`.
+const SIDE_EFFECTS = 'calls, `new`, decorators, assignments to outer state, or top-level statements tied to it';
+
 const LOCKFILE_NAMES = new Set(Object.values(LOCKFILES));
 
 /** Tracked files that mention the candidate as a whole word, apart from its own file, lockfiles and (for dependencies) manifests. */
@@ -120,9 +123,11 @@ ${contents}
 
 Static analysis misses dynamic usage, so search the repository for it: string-based imports (import() or require() with a built or literal name, lookups like obj['name']), config files, framework conventions (file-based routing, magic export or file names), and entry points declared in manifests or registrations (package.json bin, exports or scripts, plugin lists).
 
-Set unused to true with confidence "high" only if the candidate is certainly unused. If anything might use it, lower the confidence and say what in the reason.`;
+Set unused to true with confidence "high" only if the candidate is certainly unused. If anything might use it, lower the confidence and say what in the reason.${
+    c.kind === 'export' ? `\n\nCheck whether the declaration of \`${c.symbol}\` has side effects: ${SIDE_EFFECTS}. If it has any, name them in the reason.` : ''
+  }`;
 }
 
 function editPrompt(c: DeadCodeCandidate): string {
-  return `In ${c.file}, the export \`${c.symbol}\` is not used anywhere outside this file. Remove its declaration. If \`${c.symbol}\` is still used inside ${c.file}, remove only its \`export\` keyword instead. Change nothing else.`;
+  return `In ${c.file}, the export \`${c.symbol}\` is not used anywhere outside this file. Remove its declaration. If \`${c.symbol}\` is still used inside ${c.file}, remove only its \`export\` keyword instead. If the declaration has side effects (${SIDE_EFFECTS}), remove only its \`export\` keyword so they still run. Change nothing else.`;
 }

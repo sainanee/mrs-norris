@@ -86,6 +86,17 @@ test('an unreferenced export judged unused with high confidence is removed by an
   expect(findings).toEqual([]);
 });
 
+test('for an export, the judge must report side effects and the edit keeps them by dropping only `export`', async () => {
+  const { agent } = await run([unusedHelper], { edit: async () => {} });
+  const [judge, edit] = agent.prompts;
+  expect(judge).toContain(
+    'Check whether the declaration of `unusedHelper` has side effects: calls, `new`, decorators, assignments to outer state, or top-level statements tied to it. If it has any, name them in the reason.',
+  );
+  expect(edit).toContain(
+    'If the declaration has side effects (calls, `new`, decorators, assignments to outer state, or top-level statements tied to it), remove only its `export` keyword so they still run.',
+  );
+});
+
 test('an unreferenced file judged unused is deleted', async () => {
   const { changes, exists } = await run([{ kind: 'file', pkgDir: '.', file: 'src/orphan.ts' }]);
   expect(changes).toMatchObject([{ title: 'Delete unused file src/orphan.ts', allowedPaths: ['src/orphan.ts'] }]);
