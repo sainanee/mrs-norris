@@ -108,6 +108,9 @@ export async function runMrsNorris(
       throw new Error('Working tree has uncommitted changes. Commit or stash them, then run mrs-norris again.');
     }
     io.print("Don't edit files or switch branches in this checkout until mrs-norris finishes.");
+    const categories = CATEGORIES.filter((c) => config.categories.includes(c) && (opts.only ?? CATEGORIES).includes(c));
+    const unavailable = categories.filter((c) => !PASSES[c]);
+    if (unavailable.length > 0) io.print(`Skipping ${unavailable.join(', ')}: not available in this version.`);
     const scope = await makeScope(git, opts.paths, opts.since);
 
     const baselines = [];
@@ -184,11 +187,7 @@ export async function runMrsNorris(
         aborting ? Promise.reject(new Error('Aborted')) : applyAndVerify(verifyContext, change, apply, proof),
       findDeadCode,
     };
-    for (const category of CATEGORIES) {
-      if (config.categories.includes(category) && (opts.only ?? CATEGORIES).includes(category)) {
-        await PASSES[category]?.(ctx);
-      }
-    }
+    for (const category of categories) await PASSES[category]?.(ctx);
 
     const finalRuns = [];
     for (const pkg of config.packages) finalRuns.push(await runTests(root, pkg));

@@ -6,7 +6,7 @@ import { stringify } from 'yaml';
 import { parseOnly, runMrsNorris, type RunDeps, type RunOptions } from '../../src/commands/run.js';
 import { defaultConfig, loadConfig, saveConfig } from '../../src/config.js';
 import type { IO } from '../../src/io.js';
-import type { DeadCodeCandidate, PackageConfig } from '../../src/types.js';
+import type { Category, DeadCodeCandidate, PackageConfig } from '../../src/types.js';
 import { ScriptedAgent } from '../helpers/scriptedAgent.js';
 import { makeTempRepo } from '../helpers/tempRepo.js';
 
@@ -316,6 +316,16 @@ test("files the final test run changes reach neither branch", async () => {
   expect(await git('rev-parse', 'HEAD')).toBe(head);
   expect(await git('status', '--porcelain')).toBe('?? .mrs-norris/');
   expect(await git('show', `${branch}:src/a.ts`)).toBe('export const one = 1;');
+});
+
+test.each([
+  { only: undefined, skipped: ['Skipping test-writing, simplify, test-pruning: not available in this version.'] },
+  { only: ['simplify', 'dead-code'] as Category[], skipped: ['Skipping simplify: not available in this version.'] },
+  { only: ['dead-code'] as Category[], skipped: [] },
+])('with --only $only, unavailable categories are named once', async ({ only, skipped }) => {
+  const { run, printed } = await setup();
+  await run({ only });
+  expect(printed.filter((line) => line.startsWith('Skipping'))).toEqual(skipped);
 });
 
 test('runs started in the same minute get distinct branches', async () => {
