@@ -22,7 +22,7 @@ const DEFAULT_IGNORE = [
 export const PROTECTED_DOCS = ['**/*.md', '**/*.mdx', '**/*.rst', 'docs/**'];
 
 export const CONFIG_DIR = '.mrs-norris';
-const CONFIG_PATH = `${CONFIG_DIR}/config.yaml`;
+export const CONFIG_PATH = `${CONFIG_DIR}/config.yaml`;
 
 const PackageSchema = z.object({
   name: z.string(),
@@ -40,7 +40,7 @@ const ConfigSchema = z.object({
   ignore: z.array(z.string()),
   allowPublicApiChanges: z.boolean(),
   style: z.array(z.string()),
-  packages: z.array(PackageSchema),
+  packages: z.array(PackageSchema).min(1, 'must list at least one package'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

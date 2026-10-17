@@ -51,7 +51,9 @@ export async function detectNodePackages(root: string): Promise<DetectedPackage[
     ? (await fg(globs.map((glob) => `${glob}/package.json`), { cwd: root, ignore: ['**/node_modules/**'] }))
         .map((manifest) => path.posix.dirname(manifest))
         .sort()
-    : ['.'];
+    : (await exists(path.join(root, 'package.json')))
+      ? ['.']
+      : [];
   const packageManager = await detectPackageManager(root);
 
   return Promise.all(

@@ -1,5 +1,6 @@
-import { defaultConfig, saveConfig, type Config } from '../config.js';
-import { detectNodePackages, guessNodeCommands } from '../adapters/node/detect.js';
+import path from 'node:path';
+import { CONFIG_PATH, defaultConfig, saveConfig, type Config } from '../config.js';
+import { detectNodePackages, exists, guessNodeCommands } from '../adapters/node/detect.js';
 import type { IO } from '../io.js';
 import type { PackageCommands, PackageConfig } from '../types.js';
 
@@ -30,9 +31,16 @@ async function askCommands(io: IO, pkg: PackageConfig): Promise<PackageCommands>
 }
 
 export async function initProject(root: string, io: IO, opts: { yes: boolean }): Promise<Config> {
+  if (await exists(path.join(root, CONFIG_PATH))) {
+    if (opts.yes) throw new Error(`${CONFIG_PATH} already exists. Edit it, or delete it and run init again.`);
+    if (!(await io.confirm(`Overwrite existing ${CONFIG_PATH}?`))) throw new Error(`Aborted. ${CONFIG_PATH} is unchanged.`);
+  }
   const packages: PackageConfig[] = await Promise.all(
     (await detectNodePackages(root)).map(async (pkg) => ({ ...pkg, commands: await guessNodeCommands(root, pkg) })),
   );
+  if (packages.length === 0) {
+    throw new Error(`No packages found in ${root}. mrs-norris supports JS/TS projects with a package.json.`);
+  }
   io.print(formatTable(packages));
   for (const pkg of packages) {
     if (!pkg.runner) {
@@ -46,7 +54,7 @@ export async function initProject(root: string, io: IO, opts: { yes: boolean }):
     const missing = packages.find((pkg) => !pkg.commands.test);
     if (missing) {
       throw new Error(
-        `No test command found for ${missing.dir}. Run \`mrs-norris init\` interactively or edit .mrs-norris/config.yaml.`,
+        `No test command found for ${missing.dir}. Run \`mrs-norris init\` interactively or edit ${CONFIG_PATH}.`,
       );
     }
   } else if (!(await io.confirm('Use these commands?'))) {
@@ -55,6 +63,6 @@ export async function initProject(root: string, io: IO, opts: { yes: boolean }):
 
   const config = defaultConfig(packages);
   await saveConfig(root, config);
-  io.print('Wrote .mrs-norris/config.yaml');
+  io.print(`Wrote ${CONFIG_PATH}`);
   return config;
 }

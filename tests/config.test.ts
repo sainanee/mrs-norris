@@ -31,6 +31,12 @@ describe('config', () => {
     expect(await fs.readFile(path.join(root, '.mrs-norris/.gitignore'), 'utf8')).toBe('reports/\nstate.json\n');
   });
 
+  test('a config without packages is invalid', async () => {
+    const root = await makeTempRepo({ 'a.txt': 'x' });
+    await saveConfig(root, defaultConfig([]));
+    await expect(loadConfig(root)).rejects.toThrow('.mrs-norris/config.yaml\npackages: must list at least one package');
+  });
+
   test('an invalid file reports the config path and the offending field', async () => {
     const root = await makeTempRepo({ 'a.txt': 'x' });
     await saveConfig(root, defaultConfig([pkg]));
