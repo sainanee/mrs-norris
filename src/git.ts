@@ -1,8 +1,9 @@
 import { execa } from 'execa';
 import { CONFIG_DIR } from './config.js';
 
-// Never committed or cleaned, so the user's config stays as they left it across checkouts.
-const EXCLUDED = `${CONFIG_DIR}/`;
+// An untracked config is never committed or cleaned, so it stays as the user left it across
+// checkouts. A tracked one is ordinary content: local edits make the tree dirty.
+const CONFIG_PREFIX = `${CONFIG_DIR}/`;
 
 export class Git {
   private closed = false;
@@ -75,13 +76,12 @@ export class Git {
     const out = await this.run(['status', '--porcelain', '-z', '--no-renames', '--untracked-files=all']);
     return out
       .split('\0')
-      .filter(Boolean)
-      .map((entry) => entry.slice(3))
-      .filter((file) => !file.startsWith(EXCLUDED));
+      .filter((entry) => entry && !entry.startsWith(`?? ${CONFIG_PREFIX}`))
+      .map((entry) => entry.slice(3));
   }
 
   async commitAll(message: string): Promise<string> {
-    await this.run(['add', '-A', '--', '.', `:(exclude)${EXCLUDED}`]);
+    await this.run(['add', '-A', '--', '.', `:(exclude)${CONFIG_PREFIX}`]);
     // User hooks could rewrite verified content or reject the mrs-norris(...) subject.
     await this.run(['commit', '--no-verify', '-m', message]);
     return this.head();
@@ -89,7 +89,7 @@ export class Git {
 
   async rollback(): Promise<void> {
     await this.run(['reset', '--hard', 'HEAD']);
-    await this.run(['clean', '-fd', '-e', EXCLUDED]);
+    await this.run(['clean', '-fd', '-e', `/${CONFIG_PREFIX}`]);
   }
 
   async trackedFiles(): Promise<string[]> {

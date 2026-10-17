@@ -18,12 +18,15 @@ describe('Git', () => {
     expect(await git.isClean()).toBe(false);
   });
 
-  test('changedFiles leaves out an untracked .mrs-norris/config.yaml', async () => {
-    const { root, git } = await setup();
-    await fs.mkdir(path.join(root, '.mrs-norris'));
+  test.each([
+    { config: 'untracked', files: {}, expected: ['b.txt'] },
+    { config: 'tracked and edited', files: { '.mrs-norris/config.yaml': 'model: a\n' }, expected: ['.mrs-norris/config.yaml', 'b.txt'] },
+  ])('changedFiles lists $expected when .mrs-norris/config.yaml is $config', async ({ files, expected }) => {
+    const { root, git } = await setup({ 'a.txt': 'a\n', ...files });
+    await fs.mkdir(path.join(root, '.mrs-norris'), { recursive: true });
     await fs.writeFile(path.join(root, '.mrs-norris/config.yaml'), 'model: x\n');
     await fs.writeFile(path.join(root, 'b.txt'), 'b\n');
-    expect(await git.changedFiles()).toEqual(['b.txt']);
+    expect((await git.changedFiles()).sort()).toEqual(expected);
   });
 
   test('createBranch suffixes the name when the branch already exists', async () => {
@@ -54,12 +57,15 @@ describe('Git', () => {
     expect(await fs.readFile(path.join(root, 'ignored.txt'), 'utf8')).toBe('keep\n');
   });
 
-  test('rollback keeps an untracked .mrs-norris/ directory', async () => {
+  test('rollback keeps an untracked .mrs-norris/ directory only at the repo root', async () => {
     const { root, git } = await setup();
     await fs.mkdir(path.join(root, '.mrs-norris'));
     await fs.writeFile(path.join(root, '.mrs-norris/config.yaml'), 'model: x\n');
+    await fs.mkdir(path.join(root, 'src/.mrs-norris'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src/.mrs-norris/hide.ts'), 'x\n');
     await git.rollback();
     expect(await fs.readFile(path.join(root, '.mrs-norris/config.yaml'), 'utf8')).toBe('model: x\n');
+    await expect(fs.access(path.join(root, 'src/.mrs-norris'))).rejects.toThrow();
   });
 
   test('changedFiles reports both paths of a staged rename as separate entries', async () => {

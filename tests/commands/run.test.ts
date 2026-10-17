@@ -2,6 +2,7 @@ import { execa } from 'execa';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { stringify } from 'yaml';
 import { parseOnly, runMrsNorris, type RunDeps, type RunOptions } from '../../src/commands/run.js';
 import { defaultConfig, loadConfig, saveConfig } from '../../src/config.js';
 import type { IO } from '../../src/io.js';
@@ -74,12 +75,16 @@ test('parseOnly accepts known categories and lists the valid ones otherwise', ()
   );
 });
 
-test('a dirty tracked file stops the run', async () => {
-  const { root, run } = await setup();
-  await fs.writeFile(path.join(root, 'src/a.ts'), 'dirty\n');
+test.each([
+  { file: 'src/a.ts', edit: 'dirty\n' },
+  { file: '.mrs-norris/config.yaml', edit: stringify({ ...defaultConfig([pkg('.')]), model: 'edited' }) },
+])('a locally edited tracked $file stops the run and keeps the edit', async ({ file, edit }) => {
+  const { root, run } = await setup({ commitConfig: true });
+  await fs.writeFile(path.join(root, file), edit);
   await expect(run()).rejects.toThrow(
     'Working tree has uncommitted changes. Commit or stash them, then run mrs-norris again.',
   );
+  expect(await fs.readFile(path.join(root, file), 'utf8')).toBe(edit);
 });
 
 test('a failing baseline prints its problems and creates no branch', async () => {

@@ -66,16 +66,15 @@ test('a run on the bloated fixture removes its dead code and redundant comment o
     { io, agent, findDeadCode: (pkg) => findNodeDeadCode(root, pkg, { monorepo: false }) },
   );
 
-  const log = await git('log', branch, '--format=%s|%(trailers:key=Mrs-Norris-Change-Id,valueonly,separator=)');
-  const trailers = new Map(log.split('\n').map((line) => line.split('|') as [string, string]));
-  for (const subject of [
-    'mrs-norris(dead-code): Remove unused export `unusedHelper` from src/math.ts',
-    'mrs-norris(dead-code): Delete unused file src/orphan.ts',
-    'mrs-norris(dead-code): Remove unused dependency `left-pad`',
+  const log = await git('log', `main..${branch}`, '--format=%s|%(trailers:key=Mrs-Norris-Change-Id,valueonly,separator=)');
+  const commits = log.split('\n').map((line) => line.split('|'));
+  expect(commits.map(([subject]) => subject)).toEqual([
     'mrs-norris(comments): Trim redundant comments in src/math.ts',
-  ]) {
-    expect(trailers.get(subject), subject).toMatch(/^mn-[0-9a-f]{10}$/);
-  }
+    'mrs-norris(dead-code): Remove unused export `unusedHelper` from src/math.ts',
+    'mrs-norris(dead-code): Remove unused dependency `left-pad`',
+    'mrs-norris(dead-code): Delete unused file src/orphan.ts',
+  ]);
+  for (const [, id] of commits) expect(id).toMatch(/^mn-[0-9a-f]{10}$/);
   expect(summary.log.findings).toContainEqual(expect.objectContaining({ kind: 'possibly-unused', symbol: 'loadedByName', note: 'Referenced in: mrs-norris.plugins.json' }));
   const report = await fs.readFile(reportPath, 'utf8');
   expect(report).toContain('| Source lines |');

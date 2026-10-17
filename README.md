@@ -31,7 +31,7 @@ npx mrs-norris          # same as `npx mrs-norris run`
 - **Separate branch.** Work happens on `mrs-norris/<date>`, created from your HEAD. Your branch is never committed to, and you are returned to it with a clean tree at the end, on error, and on Ctrl-C.
 - **One commit per change.** Each commit carries a `Mrs-Norris-Change-Id` trailer, so you can revert or cherry-pick changes individually.
 - **Green baseline required.** If your tests don't pass before the run, mrs-norris stops before creating a branch.
-- **Every change is verified.** After each change the tests, typecheck and lint run. A change that makes a test fail, makes a test disappear, or touches files outside its scope is rolled back.
+- **Every change is verified.** After each change the tests, typecheck and lint run. A change that makes a test fail, makes a test disappear, or touches files outside its scope is rolled back. Untracked files in the root `.mrs-norris/` directory, where mrs-norris keeps its config and reports, are exempt from the scope check.
 - **Dead code needs triple agreement.** knip flags it, Claude judges it unused with high confidence, and a repo-wide whole-word search finds no reference outside its own file. Anything less becomes a finding in the report. Public exports of a library are left alone unless `allowPublicApiChanges` is set.
 - **Comment trimming is proven.** The code tokens before and after must be identical. Protected comments must survive: directives and pragmas, license headers, TODOs, anything with `@` or `#`, and JSDoc blocks in a library's public files.
 - **Claude is confined to the repo.** It can read only inside the repository and write only the files a change allows.
