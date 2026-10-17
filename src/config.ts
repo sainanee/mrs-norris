@@ -6,7 +6,7 @@ import { CATEGORIES, type PackageConfig } from './types.js';
 
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 
-export const DEFAULT_IGNORE = [
+const DEFAULT_IGNORE = [
   '**/node_modules/**',
   '**/dist/**',
   '**/build/**',
@@ -33,7 +33,7 @@ const PackageSchema = z.object({
   commands: z.object({ test: z.string(), typecheck: z.string().optional(), lint: z.string().optional() }),
 }) satisfies z.ZodType<PackageConfig>;
 
-export const ConfigSchema = z.object({
+const ConfigSchema = z.object({
   version: z.literal(1),
   model: z.string(),
   categories: z.array(z.enum(CATEGORIES)),

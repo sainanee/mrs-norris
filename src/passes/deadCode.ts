@@ -10,7 +10,7 @@ import { isTestFile } from '../metrics/classify.js';
 import type { DeadCodeCandidate, Finding, PackageConfig } from '../types.js';
 import { isEditable, isPublicFile, type PassContext } from './context.js';
 
-export const VerdictSchema = z.object({
+const VerdictSchema = z.object({
   unused: z.boolean(),
   confidence: z.enum(['high', 'medium', 'low']),
   reason: z.string(),
@@ -22,7 +22,7 @@ const SIDE_EFFECTS = 'calls, `new`, decorators, assignments to outer state, or t
 const LOCKFILE_NAMES = new Set(Object.values(LOCKFILES));
 
 /** Tracked files that mention the candidate as a whole word, apart from its own file, lockfiles and (for dependencies) manifests. */
-export async function referencesOutside(git: Git, c: DeadCodeCandidate): Promise<string[]> {
+async function referencesOutside(git: Git, c: DeadCodeCandidate): Promise<string[]> {
   // A declaration file foo.d.ts is imported as ./foo.
   const term = c.kind === 'file' ? path.posix.parse(c.file).name.replace(/\.d$/, '') : c.symbol!;
   const excluded = (file: string) => {
@@ -44,7 +44,7 @@ async function handle(ctx: PassContext, pkg: PackageConfig, c: DeadCodeCandidate
   // Test files are pruned by a later pass under a stricter proof.
   if (c.kind === 'file' && isTestFile(c.file)) return;
   const finding = (kind: Finding['kind'], note: string) => {
-    ctx.log.findings.push({ kind, category: 'dead-code', file: c.file, symbol: c.symbol, note });
+    ctx.log.findings.push({ kind, file: c.file, symbol: c.symbol, note });
   };
 
   if (!ctx.config.allowPublicApiChanges && isPublicFile(ctx, c.file)) {

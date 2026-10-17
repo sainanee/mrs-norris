@@ -112,7 +112,7 @@ test.each([
 ] as const)('%s referenced elsewhere becomes a finding without asking Claude', async (_, candidate, file, content) => {
   const { agent, changes, findings } = await run([candidate], { files: { [file]: content }, ignore: [] });
   expect(findings).toEqual([
-    { kind: 'possibly-unused', category: 'dead-code', file: candidate.file, symbol: candidate.symbol, note: `Referenced in: ${file}` },
+    { kind: 'possibly-unused', file: candidate.file, symbol: candidate.symbol, note: `Referenced in: ${file}` },
   ]);
   expect(agent.prompts).toEqual([]);
   expect(changes).toEqual([]);
@@ -123,7 +123,7 @@ test.each([
   [{ unused: false, confidence: 'high', reason: 'Used by the router' }, 'Claude: Used by the router'],
 ])('verdict %j becomes a finding and is not applied', async (verdict, note) => {
   const { changes, findings } = await run([unusedHelper], { judge: () => verdict });
-  expect(findings).toEqual([{ kind: 'possibly-unused', category: 'dead-code', file: 'src/math.ts', symbol: 'unusedHelper', note }]);
+  expect(findings).toEqual([{ kind: 'possibly-unused', file: 'src/math.ts', symbol: 'unusedHelper', note }]);
   expect(changes).toEqual([]);
 });
 
@@ -135,7 +135,7 @@ test('a judge error becomes a finding and the pass moves on to the next candidat
   };
   const { changes, findings } = await run([unusedHelper, { kind: 'file', pkgDir: '.', file: 'src/orphan.ts' }], { judge });
   expect(findings).toEqual([
-    { kind: 'possibly-unused', category: 'dead-code', file: 'src/math.ts', symbol: 'unusedHelper', note: 'Claude: error: network down' },
+    { kind: 'possibly-unused', file: 'src/math.ts', symbol: 'unusedHelper', note: 'Claude: error: network down' },
   ]);
   expect(changes).toMatchObject([{ title: 'Delete unused file src/orphan.ts' }]);
 });
@@ -155,7 +155,6 @@ test('an export in the public surface of the package with the longest matching d
   expect(findings).toEqual([
     {
       kind: 'public-export',
-      category: 'dead-code',
       file: 'packages/lib/src/index.ts',
       symbol: 'helper',
       note: 'Unused public export left alone (set allowPublicApiChanges to allow)',

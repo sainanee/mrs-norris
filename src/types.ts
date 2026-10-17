@@ -21,7 +21,7 @@ export interface PlannedChange { id: string; category: Category; title: string; 
 export type ProofResult = { ok: true } | { ok: false; reason: string };
 export interface ChangeRecord { id: string; category: Category; title: string; reason: string; files: string[];
   status: 'committed' | 'rolled-back' | 'skipped'; detail?: string; commit?: string }
-export interface Finding { kind: 'possibly-unused' | 'public-export'; category: Category; file: string; symbol?: string; note: string }
+export interface Finding { kind: 'possibly-unused' | 'public-export'; file: string; symbol?: string; note: string }
 export interface RunLog { changes: ChangeRecord[]; findings: Finding[]; flaky: string[] }
 
 export interface Metrics { sourceLines: number; testLines: number; commentLines: number; testCount: number;

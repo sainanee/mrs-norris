@@ -26,9 +26,9 @@ const summary: RunSummary = {
       { id: 'mn-dddddddddd', category: 'comments', title: 'Trim comments in c', reason: 'restate code', files: ['src/c.ts'], status: 'committed' },
     ],
     findings: [
-      { kind: 'possibly-unused', category: 'dead-code', file: 'src/old.ts', symbol: 'legacy', note: 'only referenced dynamically' },
-      { kind: 'possibly-unused', category: 'dead-code', file: 'src/whole.ts', note: 'knip flagged, judge unsure' },
-      { kind: 'public-export', category: 'dead-code', file: 'src/index.ts', symbol: 'api', note: 'part of the public surface' },
+      { kind: 'possibly-unused', file: 'src/old.ts', symbol: 'legacy', note: 'only referenced dynamically' },
+      { kind: 'possibly-unused', file: 'src/whole.ts', note: 'knip flagged, judge unsure' },
+      { kind: 'public-export', file: 'src/index.ts', symbol: 'api', note: 'part of the public surface' },
     ],
     flaky: ['tests/a.test.ts > flaky one'],
   },
